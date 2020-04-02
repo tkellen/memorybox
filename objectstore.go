@@ -32,25 +32,25 @@ func (s *ObjectStore) Root() string {
 	return s.Bucket
 }
 
-func (s *ObjectStore) Save(src io.Reader, dest string) error {
+func (s *ObjectStore) Save(src io.Reader, temp string, filename func() string) error {
 	opts := minio.PutObjectOptions{}
-	if _, err := s.Client.PutObject(s.Bucket, dest, src, -1, opts); err != nil {
+	if _, err := s.Client.PutObject(s.Bucket, temp, src, -1, opts); err != nil {
 		return fmt.Errorf("object store failed: %v", err)
 	}
-	return nil
-}
-
-func (s *ObjectStore) Index(temp string, hash string) error {
-	src := minio.NewSourceInfo(s.Bucket, temp, nil)
-	dest, err := minio.NewDestinationInfo(s.Bucket, hash, nil, nil)
+	tempObject := minio.NewSourceInfo(s.Bucket, temp, nil)
+	destObject, err := minio.NewDestinationInfo(s.Bucket, filename(), nil, nil)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed preparing final destination: %s", err)
 	}
-	if err := s.Client.CopyObject(dest, src); err != nil {
+	if err := s.Client.CopyObject(destObject, tempObject); err != nil {
 		return err
 	}
 	if err := s.Client.RemoveObject(s.Bucket, temp); err != nil {
 		return err
 	}
+	return nil
+}
+
+func (s *ObjectStore) Index(temp string, hash string) error {
 	return nil
 }

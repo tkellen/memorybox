@@ -28,19 +28,19 @@ func NewLocalStore(root string) (*LocalStore, error) {
 	return &LocalStore{RootPath: rootPath}, nil
 }
 
-func (s *LocalStore) Root() string {
-	return s.RootPath
-}
-
 // Save writes the content of the io.Reader to the destination on disk.
-func (s *LocalStore) Save(src io.Reader, destPath string) error {
-	file, err := os.Create(path.Join(s.RootPath, destPath))
+func (s *LocalStore) Save(src io.Reader, temp string, filename func() string) error {
+	tempPath := path.Join(s.RootPath, temp)
+	file, err := os.Create(tempPath)
 	if err != nil {
 		return fmt.Errorf("local store failed: %s", err)
 	}
-	// Copy the file into place, returning an error if any.
 	if _, err := io.Copy(file, src); err != nil {
 		return fmt.Errorf("local store copy failed: %s", err)
+	}
+	destPath := path.Join(s.RootPath, filename()) // must be called _after_ copy
+	if err := os.Rename(tempPath, destPath); err != nil {
+		return fmt.Errorf("local store rename from %s to %s failed: %s", tempPath, destPath, err)
 	}
 	return nil
 }
@@ -48,5 +48,5 @@ func (s *LocalStore) Save(src io.Reader, destPath string) error {
 // Index copies a temporary file sent to the store to its final location.
 // TODO: perform indexing operations here
 func (s *LocalStore) Index(temp string, hash string) error {
-	return os.Rename(path.Join(s.RootPath, temp), path.Join(s.RootPath, hash))
+	return nil
 }

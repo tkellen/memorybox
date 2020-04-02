@@ -10,7 +10,6 @@ import (
 	"io"
 	"log"
 	"os"
-	"path"
 )
 
 const MAX_CONCURRENCY = 100
@@ -29,9 +28,8 @@ Options:
 
 // Store defines a storage engine that can save and index content.
 type Store interface {
-	Save(io.Reader, string) error
+	Save(io.Reader, string, func() string) error
 	Index(string, string) error
-	Root() string
 }
 
 // process takes an input file path and stores the file found there using the
@@ -43,32 +41,27 @@ func process(input string, store Store) error {
 		return fmt.Errorf("unable to open file: %s: %s", input, err)
 	}
 	defer file.Close()
+	// generate a UUID to use as the destination file name until we know the
+	// hash of the contents of the file.
+	temp := ksuid.New().String()
 	// prepare a hash function to generate a fixed size message digest that
 	// uniquely identifies the contents of the file.
 	hash := sha256.New()
 	// prepare to pass the contents of the file through the hash function as it
 	// is being read by the storage engine.
 	tee := io.TeeReader(file, hash)
-	// generate a UUID to use as the destination file name until we know the
-	// hash of the contents of the file.
-	temp := ksuid.New().String()
+    // provide a function to abstract calculating the hex representation of the
+    // hash of our file contents. note: this must be called _after_ the file has
+    // been read fully (that is, after all its bits have passed through the hash
+    // function).
+	filename := func() string {
+		return "sha256-"+hex.EncodeToString(hash.Sum(nil))
+	}
 	// send the file to the configured storage engine
-	if err := store.Save(tee, temp); err != nil {
+	if err := store.Save(tee, temp, filename); err != nil {
 		return fmt.Errorf("saving failed: %s", err)
 	}
-	// the save method above "pulled" the entire contents of the file through
-	// our hashing function to produce a "message digest" (a fixed length string
-	// that uniquely identifies the content of the file). now get a hexadecimal
-	// representation of it so we can properly index the file using our storage
-	// engine.
-	digest := "sha256-"+hex.EncodeToString(hash.Sum(nil))
-	// rename the temporary file in our store to its content hash and also index
-	// the details about it.
-	indexErr := store.Index(temp, digest)
-	if indexErr != nil {
-		log.Printf("indexing failed: %s", indexErr)
-	}
-	log.Printf("stored %s at %s", input, path.Join(store.Root(), digest))
+	log.Printf("stored %s at %s", input, filename())
 	return nil
 }
 
