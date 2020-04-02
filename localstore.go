@@ -28,18 +28,24 @@ func NewLocalStore(root string) (*LocalStore, error) {
 
 // Save writes the content of an io.Reader to local disk, naming the file with
 // a hash of its contents.
-func (s *LocalStore) Save(src io.Reader, temp string, filename func() string) error {
-	tempPath := path.Join(s.RootPath, temp)
-	file, err := os.Create(tempPath)
+func (s *LocalStore) Save(src io.Reader, hash string) error {
+	destPath := path.Join(s.RootPath, hash)
+	file, err := os.Create(destPath)
+	defer file.Close()
 	if err != nil {
-		return fmt.Errorf("local store failed: %s", err)
+		return fmt.Errorf("local store failed to create file: %s", err)
 	}
 	if _, err := io.Copy(file, src); err != nil {
-		return fmt.Errorf("local store copy failed: %s", err)
-	}
-	destPath := path.Join(s.RootPath, filename()) // must be called _after_ copy
-	if err := os.Rename(tempPath, destPath); err != nil {
-		return fmt.Errorf("local store rename from %s to %s failed: %s", tempPath, destPath, err)
+		return fmt.Errorf("local store failed to save file: %s", err)
 	}
 	return nil
+}
+
+// Exists determines if a given file exists in the local store already.
+func (s *LocalStore) Exists(filepath string) bool {
+	_, err := os.Stat(path.Join(s.RootPath, filepath))
+	if err != nil {
+		return false
+	}
+	return true
 }

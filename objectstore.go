@@ -27,23 +27,19 @@ func NewObjectStore(bucket string) (*ObjectStore, error) {
 	}, nil
 }
 
-// Save writes the content of an io.Reader to object storage under a key name
-// that is a hash of its contents.
-func (s *ObjectStore) Save(src io.Reader, temp string, filename func() string) error {
-	opts := minio.PutObjectOptions{}
-	if _, err := s.Client.PutObject(s.Bucket, temp, src, -1, opts); err != nil {
-		return fmt.Errorf("object store failed: %v", err)
-	}
-	tempObject := minio.NewSourceInfo(s.Bucket, temp, nil)
-	destObject, err := minio.NewDestinationInfo(s.Bucket, filename(), nil, nil)
-	if err != nil {
-		return fmt.Errorf("failed preparing final destination: %s", err)
-	}
-	if err := s.Client.CopyObject(destObject, tempObject); err != nil {
-		return err
-	}
-	if err := s.Client.RemoveObject(s.Bucket, temp); err != nil {
-		return err
+// Save writes the content of an io.Reader to object storage.
+func (s *ObjectStore) Save(src io.Reader, key string) error {
+	if _, err := s.Client.PutObject(s.Bucket, key, src, -1, minio.PutObjectOptions{}); err != nil {
+		return fmt.Errorf("object store failed to put: %s", err)
 	}
 	return nil
+}
+
+// Exists determines if a given file exists in the object store already.
+func (s *ObjectStore) Exists(key string) bool {
+	_, err := s.Client.StatObject(s.Bucket, key, minio.StatObjectOptions{})
+	if err != nil {
+		return false
+	}
+	return true
 }
