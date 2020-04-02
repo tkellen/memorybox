@@ -4,8 +4,8 @@
 # Introduction
 On the shoulders of a lot of really cool projects I am teaching myself how to
 make a content addressable storage engine. At the time of this writing, I am
-aiming to keep the implementation to less than 500 lines of code (not including
-comments or tests).
+aiming to keep the implementation to less than 500 readable lines of code (not
+including comments or tests).
 
 It will be possible to use local disk or any storage service that provides a
 s3-compatible API to ensure the bits that go in stand the test of time.
@@ -25,10 +25,11 @@ things this project is designed to make easy to store and retrieve.
 ## Try it
 Clone this repo and run the following:
 ```sh
-go run ./... local save $(find -type f)
+go build ./...
+echo "wat" | ./memorybox local save -
+./memorybox local save https://scaleout.team/logo.svg
+./memorybox local save $(find -maxdepth 1 -type f)
 ```
-...this will copy every file in the repo (including files under `.git`) to
-`~/memorybox`, naming each file the sha256 sum of its contents.
 
 ## Prior Art
 * [Perkeep](https://perkeep.org/)

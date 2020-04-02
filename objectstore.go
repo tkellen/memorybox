@@ -38,8 +38,5 @@ func (s *ObjectStore) Save(src io.Reader, key string) error {
 // Exists determines if a given file exists in the object store already.
 func (s *ObjectStore) Exists(key string) bool {
 	_, err := s.Client.StatObject(s.Bucket, key, minio.StatObjectOptions{})
-	if err != nil {
-		return false
-	}
-	return true
+	return err == nil
 }

@@ -1,21 +1,15 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"github.com/docopt/docopt-go"
 	"github.com/korovkin/limiter"
-	"hash"
 	"io"
-	"io/ioutil"
 	"log"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 )
-
 
 const concurrency = 10
 const version = "dev"
@@ -78,100 +72,32 @@ func main() {
 	}
 }
 
-// isRemote returns true if a given input is a url, false otherwise (assumes a
-// local file).
-func isRemote(input string) bool {
-	return strings.HasPrefix(input, "http://") ||
-		strings.HasPrefix(input, "https://")
-}
-
-// localRead calculates the sha256 digest of a file on disk and returns the
-// path to the file and the result.
-func localRead(filepath string, hash hash.Hash) (string, error) {
-	file, openErr := os.Open(filepath)
-	if openErr != nil {
-		return "", fmt.Errorf("unable to open file: %s", openErr)
-	}
-	defer file.Close()
-	_, err := io.Copy(hash, file)
-	if err != nil {
-		return "",fmt.Errorf("unable to hash file: %s", err)
-	}
-	return filepath, nil
-}
-
-// remoteRead downloads a file from a remote endpoint and computes the sha256
-// digest of its contents as it stores it to a temporary location on disk. both
-// of these values are returned to the consumer.
-func remoteRead(url string, hash hash.Hash) (string, error) {
-	// make a get request for our file
-	resp, err := http.Get(url)
-	if err != nil {
-		return "", fmt.Errorf("failed to get url: %s", err)
-	}
-	defer resp.Body.Close()
-	// prepare a temporary file on disk to store the download
-	file, ioErr := ioutil.TempFile("", tempPrefix)
-	if ioErr != nil {
-		return "", fmt.Errorf("failed to create temp file: %s", ioErr)
-	}
-	defer file.Close()
-    // pass the contents of the file through the hash function as it is being
-    // downloaded to disk.
-    io.TeeReader(file, hash)
-    if _, err := io.Copy(file, resp.Body); err != nil {
-    	return "", fmt.Errorf("failed to download file: %s", err)
-	}
-	return file.Name(), nil
-}
-
-// process takes an input (file or url) and copies what exists there to the
+// process takes an input (stdin, file or url) and sends the bits within to the
 // provided store under a content-addressable location.
 func process(input string, store Store) error {
-	var filepath string
-	var err error
-	var reader func(string, hash.Hash) (string, error)
-	hash := sha256.New()
-	// determine if our input is on local disk or if it is coming from
-	if isRemote(input) {
-		// use the remote read strategy of downloading the input to a temporary
-		// file and hashing it in the process.
-		reader = remoteRead
-		// we hash remote files by downloading them to a local temp file
-		// before sending them to the provided backing store. this makes sure
-		// we clean up after ourselves
-		defer func() {
-			os.Remove(filepath)
-		}()
-	} else {
-		// use the local read strategy of just hashing the contents before we
-		// start.
-		reader = localRead
-	}
-	// get the path to file and push its contents through our hashing function
-	filepath, err = reader(input, hash)
+	filepath, digest, err := prepare(input)
 	if err != nil {
-		return fmt.Errorf("unable to process input: %s", err)
+		log.Fatalf("hashing failed: %s", err)
 	}
-	// calculate the hex value of our hashing function to use as the filename
-	// in our storage engine.
-	dest := "sha256-" + hex.EncodeToString(hash.Sum(nil))
+	// if our input was buffered to a temporary file, remove it when we're done
+	if filepath != input {
+		defer os.Remove(filepath)
+	}
 	// skip file if it has already been stored
-	if store.Exists(dest) {
-		log.Printf("skipped: %s (exists at %s)", input, dest)
+	if store.Exists(digest) {
+		log.Printf("skipped: %s (exists at %s)", input, digest)
 		return nil
 	}
-	// no matter where the file came from, it should now be on disk. open it
-	// for streaming to the backing store.
+	// no matter where the data came from, it should now be in a file on disk.
+	// open it for streaming to the backing store.
 	file, openErr := os.Open(filepath)
 	if openErr != nil {
 		return fmt.Errorf("unable to open file: %s", openErr)
 	}
 	defer file.Close()
-	if err := store.Save(file, dest); err != nil {
+	if err = store.Save(file, digest); err != nil {
 		return fmt.Errorf("saving failed: %s", err)
 	}
-	log.Printf("stored: %s (%s)", input, dest)
+	log.Printf("stored: %s (%s)", input, digest)
 	return nil
 }
-
