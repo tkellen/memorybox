@@ -61,7 +61,7 @@ func process(input string, store Store) error {
 	// that uniquely identifies the content of the file). now get a hexadecimal
 	// representation of it so we can properly index the file using our storage
 	// engine.
-	digest := hex.EncodeToString(hash.Sum(nil))
+	digest := "sha256-"+hex.EncodeToString(hash.Sum(nil))
 	// rename the temporary file in our store to its content hash and also index
 	// the details about it.
 	indexErr := store.Index(temp, digest)
