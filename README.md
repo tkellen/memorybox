@@ -8,7 +8,10 @@ aiming to keep the implementation to less than 500 lines of code (not including
 comments).
 
 It will be possible to use local disk or any storage service that provides a
-s3-compatible API to ensure the bits that go in stand the test of time. 
+s3-compatible API to ensure the bits that go in stand the test of time.
+
+I will probably implement some kind of adapter for all of the project listed
+below. 
 
 ## Prior Art
 * [Perkeep](https://perkeep.org/)
