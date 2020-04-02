@@ -80,11 +80,11 @@ func (s *LocalStore) Index(src string, hash string) error {
 
 // process takes an input file path and stores the file found there using the
 // provided storage engine.
-func process(path string, store Store) error {
+func process(input string, store Store) error {
 	// open the input file
-	file, err := os.Open(path)
+	file, err := os.Open(input)
 	if err != nil {
-		return fmt.Errorf("unable to open file: %s: %s", path, err)
+		return fmt.Errorf("unable to open file: %s: %s", input, err)
 	}
 	defer file.Close()
 	// prepare a hash function to generate a fixed size message digest that
@@ -111,6 +111,7 @@ func process(path string, store Store) error {
 	if indexErr != nil {
 		log.Printf("indexing failed: %s", indexErr)
 	}
+	log.Printf("stored %s at %s", input, path.Join(store.(*LocalStore).RootPath, digest))
 	return nil
 }
 
