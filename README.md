@@ -1,5 +1,5 @@
-# memorybox
-> easy to understand, content-addressed, digital archival
+# memorybox ![build and test](https://github.com/tkellen/memorybox/workflows/build%20and%20test/badge.svg?branch=master)
+> easy to understand digital archival tool
 
 # Introduction
 On the shoulders of a lot of really cool projects I am teaching myself how to
@@ -11,7 +11,7 @@ It will be possible to use local disk or any storage service that provides a
 s3-compatible API to ensure the bits that go in stand the test of time.
 
 I will probably implement some kind of adapter for all of the projects listed
-below. 
+in the prior art section.
 
 ## Non-Goals
 * Being a generalized point-in-time backup solution for in-progress creations.

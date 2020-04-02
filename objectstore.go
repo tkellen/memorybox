@@ -8,14 +8,13 @@ import (
 	"strings"
 )
 
-// ObjectStore is a Store implementation that uses s3-compatible object storage.
+// ObjectStore implements Store backed by s3-compatible object storage.
 type ObjectStore struct {
 	Bucket string
 	Client *minio.Client
 }
 
-// NewObjectStore returns a reference to an ObjectStore instance writes to a
-// s3 compatible object store bucket.
+// NewObjectStore returns a reference to an ObjectStore instance.
 func NewObjectStore(bucket string) (*ObjectStore, error) {
 	creds := credentials.NewEnvAWS()
 	client, err := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
@@ -28,10 +27,8 @@ func NewObjectStore(bucket string) (*ObjectStore, error) {
 	}, nil
 }
 
-func (s *ObjectStore) Root() string {
-	return s.Bucket
-}
-
+// Save writes the content of an io.Reader to object storage under a key name
+// that is a hash of its contents.
 func (s *ObjectStore) Save(src io.Reader, temp string, filename func() string) error {
 	opts := minio.PutObjectOptions{}
 	if _, err := s.Client.PutObject(s.Bucket, temp, src, -1, opts); err != nil {
@@ -48,9 +45,5 @@ func (s *ObjectStore) Save(src io.Reader, temp string, filename func() string) e
 	if err := s.Client.RemoveObject(s.Bucket, temp); err != nil {
 		return err
 	}
-	return nil
-}
-
-func (s *ObjectStore) Index(temp string, hash string) error {
 	return nil
 }

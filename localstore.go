@@ -8,14 +8,12 @@ import (
 	"path"
 )
 
-// LocalStore is a Store implementation that uses local disk.
+// LocalStore implements Store backed by local disk.
 type LocalStore struct {
 	RootPath string
 }
 
-// NewLocalStore returns a reference to a LocalStore instance that, by default,
-// writes to ~/memorybox.
-// TODO: allow this to be configured with a command line flag.
+// NewLocalStore returns a reference to a LocalStore instance.
 func NewLocalStore(root string) (*LocalStore, error) {
 	rootPath, err := homedir.Expand(root)
 	if err != nil {
@@ -28,7 +26,8 @@ func NewLocalStore(root string) (*LocalStore, error) {
 	return &LocalStore{RootPath: rootPath}, nil
 }
 
-// Save writes the content of the io.Reader to the destination on disk.
+// Save writes the content of an io.Reader to local disk, naming the file with
+// a hash of its contents.
 func (s *LocalStore) Save(src io.Reader, temp string, filename func() string) error {
 	tempPath := path.Join(s.RootPath, temp)
 	file, err := os.Create(tempPath)
@@ -42,11 +41,5 @@ func (s *LocalStore) Save(src io.Reader, temp string, filename func() string) er
 	if err := os.Rename(tempPath, destPath); err != nil {
 		return fmt.Errorf("local store rename from %s to %s failed: %s", tempPath, destPath, err)
 	}
-	return nil
-}
-
-// Index copies a temporary file sent to the store to its final location.
-// TODO: perform indexing operations here
-func (s *LocalStore) Index(temp string, hash string) error {
 	return nil
 }
