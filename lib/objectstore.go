@@ -14,12 +14,17 @@ type ObjectStore struct {
 	Client *minio.Client
 }
 
+// String returns a human-friendly representation of the store.
+func (s *ObjectStore) String() string {
+	return fmt.Sprintf("ObjectStore: %s", s.Bucket)
+}
+
 // NewObjectStore returns a reference to an ObjectStore instance.
 func NewObjectStore(bucket string) (*ObjectStore, error) {
 	creds := credentials.NewEnvAWS()
 	client, err := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
 	if err != nil {
-		return nil, fmt.Errorf("no client: %s", err)
+		return nil, fmt.Errorf("client: %s", err)
 	}
 	return &ObjectStore{
 		Bucket: strings.TrimPrefix(bucket, "s3://"),
@@ -30,7 +35,7 @@ func NewObjectStore(bucket string) (*ObjectStore, error) {
 // Put writes the content of an io.Reader to object storage.
 func (s *ObjectStore) Put(src io.Reader, key string) error {
 	if _, err := s.Client.PutObject(s.Bucket, key, src, -1, minio.PutObjectOptions{}); err != nil {
-		return fmt.Errorf("object store failed to put: %s", err)
+		return err
 	}
 	return nil
 }
@@ -53,7 +58,7 @@ func (s *ObjectStore) Search(search string) ([]string, error) {
 func (s *ObjectStore) Get(key string) (io.Reader, error) {
 	object, err := s.Client.GetObject(s.Bucket, key, minio.GetObjectOptions{})
 	if err != nil {
-		return nil, fmt.Errorf("object store failed to get: %s", err)
+		return nil, err
 	}
 	return object, nil
 }

@@ -15,14 +15,19 @@ type LocalStore struct {
 	RootPath string
 }
 
+// String returns a human-friendly representation of the store.
+func (s *LocalStore) String() string {
+	return fmt.Sprintf("LocalStore: %s", s.RootPath)
+}
+
 // NewLocalStore returns a reference to a LocalStore instance.
 func NewLocalStore(root string) (*LocalStore, error) {
 	rootPath, err := homedir.Expand(root)
 	if err != nil {
-		return nil, fmt.Errorf("unable to locate home directory: %s", err)
+		return nil, fmt.Errorf("locate home directory: %s", err)
 	}
 	if err = os.MkdirAll(rootPath, 0755); err != nil {
-		return nil, fmt.Errorf("could not create %s: %s", rootPath, err)
+		return nil, fmt.Errorf("create memorybox root: %s", err)
 	}
 	return &LocalStore{RootPath: rootPath}, nil
 }
@@ -33,11 +38,11 @@ func (s *LocalStore) Put(src io.Reader, hash string) error {
 	fullPath := path.Join(s.RootPath, hash)
 	file, err := os.Create(fullPath)
 	if err != nil {
-		return fmt.Errorf("local store open file: %s", err)
+		return err
 	}
 	defer file.Close()
 	if _, err := io.Copy(file, src); err != nil {
-		return fmt.Errorf("local store write file: %s", err)
+		return fmt.Errorf("write: %s", err)
 	}
 	return file.Sync()
 }
@@ -47,7 +52,7 @@ func (s *LocalStore) Search(search string) ([]string, error) {
 	var matches []string
 	results, err := filepath.Glob(path.Join(s.RootPath, search) + "*")
 	if err != nil {
-		return nil, fmt.Errorf("local store search: %s", err)
+		return nil, err
 	}
 	for _, entry := range results {
 		matches = append(matches, strings.TrimPrefix(entry, s.RootPath))
@@ -59,7 +64,7 @@ func (s *LocalStore) Search(search string) ([]string, error) {
 func (s *LocalStore) Get(request string) (io.Reader, error) {
 	file, err := os.Open(path.Join(s.RootPath, request))
 	if err != nil {
-		return nil, fmt.Errorf("local store get: %s", err)
+		return nil, err
 	}
 	return file, nil
 }

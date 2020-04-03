@@ -3,7 +3,6 @@ package memorybox
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -16,11 +15,11 @@ func hashFile(filepath string) (string, error) {
 	hash := sha256.New()
 	file, openErr := os.Open(filepath)
 	if openErr != nil {
-		return "", fmt.Errorf("hashFile open: %s", openErr)
+		return "", openErr
 	}
 	defer file.Close()
 	if _, err := io.Copy(hash, file); err != nil {
-		return "", fmt.Errorf("hashFile copy: %s", err)
+		return "", err
 	}
 	// Include a prefix indicating what hashing algorithm was used to provide
 	// an upgrade path for future versions which may need to change this.
@@ -44,7 +43,7 @@ func saveToTemp(input string, logger Logger) (string, error) {
 	var stream io.Reader
 	tempFile, err := ioutil.TempFile("", "mb")
 	if err != nil {
-		return "", fmt.Errorf("saveToTemp: %s", err)
+		return "", err
 	}
 	defer tempFile.Close()
 	if input == "-" {
@@ -52,13 +51,13 @@ func saveToTemp(input string, logger Logger) (string, error) {
 	} else {
 		resp, getErr := http.Get(input)
 		if getErr != nil {
-			return "", fmt.Errorf("prepare http.Get: %s", getErr)
+			return "", err
 		}
 		defer resp.Body.Close()
 		stream = resp.Body
 	}
 	if _, err := io.Copy(tempFile, stream); err != nil {
-		return "", fmt.Errorf("saveToTemp: %s", err)
+		return "", err
 	}
 	return tempFile.Name(), nil
 }

@@ -29,11 +29,17 @@ Options:
   -v --verbose             Show version.
 `
 
+// Command configures how the cli should execute.
 type Command struct {
-	Store memorybox.Store
-	Inputs []string
-	Logger memorybox.Logger
+	Store       memorybox.Store
+	Inputs      []string
+	Logger      memorybox.Logger
 	Concurrency int
+}
+
+// String returns a human friendly representation of the command configuration.
+func (c *Command) String() string {
+	return fmt.Sprintf("%s\nInputs:\n  %s\nConcurrency: %d", c.Store, strings.Join(c.Inputs, "\n  "), c.Concurrency)
 }
 
 func main() {
@@ -46,10 +52,11 @@ func main() {
 	usage := strings.ReplaceAll(usage, "$0", filepath.Base(os.Args[0]))
 	// Parse command line arguments.
 	cli, _ := docopt.ParseArgs(usage, os.Args[1:], version)
-	// Prep our backing store.
+	// If we are using a local storage, initialize the store for it.
 	if cli["local"].(bool) {
 		store, err = memorybox.NewLocalStore(cli["--root"].(string))
 	}
+	// If we are using object storage, initialize the store for it.
 	if cli["s3"].(bool) {
 		store, err = memorybox.NewObjectStore(cli["<bucket>"].(string))
 	}
@@ -63,51 +70,52 @@ func main() {
 	}
 	// Assemble configuration for running command.
 	command := &Command{
-		Store: store,
-		Inputs: cli["<files>"].([]string),
+		Store:       store,
+		Inputs:      cli["<files>"].([]string),
 		Concurrency: concurrency,
-		Logger: func(string, ...interface{}) {},
+		Logger:      func(string, ...interface{}) {}, // No logs by default.
 	}
 	// Enable informational logging while in debug mode.
 	if cli["--debug"].(bool) {
 		command.Logger = log.Printf
 	}
-	// Execute our configuration
+	// Run the put command (if it was specified).
 	if cli["put"].(bool) {
-		err = put(command)
+		err = putCmd(command)
 	}
+	// Run the get command (if it was specified).
 	if cli["get"].(bool) {
-		err = get(command)
+		err = getCmd(command)
 	}
+	// Exit non-zero if there were any errors.
 	if err != nil {
-		log.Printf("%s", err)
+		log.Printf("Error(s):\n%s", err)
 		os.Exit(1)
 	}
 }
 
-func put(command *Command) error {
-	var incomplete []error
-	// Configure concurrency limiting.
-	limit := limiter.NewConcurrencyLimiter(command.Concurrency)
-	// Process every input with a limit on how fast this is performed.
-	for _, input := range command.Inputs {
-		// Save input in var that will be in scope for closure below.
+// Send all inputs to the store, capping how many requests we run simultaneously
+// to match our desired concurrency limit.
+func putCmd(cmd *Command) error {
+	var errs []string
+	cmd.Logger("Command: put\n%s", cmd)
+	limit := limiter.NewConcurrencyLimiter(cmd.Concurrency)
+	for _, input := range cmd.Inputs {
 		path := input
-		// Execute puts as fast as we've allowed.
 		limit.Execute(func() {
-			if err := memorybox.Put(path, command.Store, command.Logger); err != nil {
-				incomplete = append(incomplete, err)
+			if err := memorybox.Put(path, cmd.Store, cmd.Logger); err != nil {
+				errs = append(errs, fmt.Sprintf("put: %s", err))
 			}
 		})
 	}
-	// Wait for all operations to complete
 	limit.Wait()
-	if len(incomplete) > 0 {
-		return fmt.Errorf("some put operations failed: %s", incomplete)
+	if len(errs) > 0 {
+		return fmt.Errorf(strings.Join(errs, "\n"))
 	}
 	return nil
 }
 
-func get(command *Command) error {
-	return memorybox.Get(command.Inputs[0], command.Store, command.Logger)
+func getCmd(cmd *Command) error {
+	cmd.Logger("Command: get\n%s", cmd)
+	return memorybox.Get(cmd.Inputs[0], cmd.Store, cmd.Logger)
 }

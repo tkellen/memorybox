@@ -3,7 +3,6 @@ package memorybox
 import (
 	"fmt"
 	"io"
-	"log"
 	"os"
 )
 
@@ -18,7 +17,7 @@ type Store interface {
 // Logger defines a method prototype for logging output
 type Logger func(string, ...interface{})
 
-// Put sends the provided input to any backing store.
+// Put is a generic method sends input to any Store.
 func Put(input string, store Store, logger Logger) error {
 	// Save the input the user specified so we can log appropriately.
 	userInput := input
@@ -27,7 +26,7 @@ func Put(input string, store Store, logger Logger) error {
 	if notOnDisk(input) {
 		filepath, err := saveToTemp(input, logger)
 		if err != nil {
-			return fmt.Errorf("cp buffering: %s", err)
+			return fmt.Errorf("buffering: %s", err)
 		}
 		// Ensure we clean up the temp file after work is done.
 		defer os.Remove(filepath)
@@ -36,7 +35,7 @@ func Put(input string, store Store, logger Logger) error {
 	// Hash the contents of our file.
 	digest, err := hashFile(input)
 	if err != nil {
-		return fmt.Errorf("cp hashing: %s", err)
+		return fmt.Errorf("hashing: %s", err)
 	}
 	// Skip file if it has already been stored.
 	if store.Exists(digest) {
@@ -46,38 +45,38 @@ func Put(input string, store Store, logger Logger) error {
 	// Open the file we're about to copy.
 	file, openErr := os.Open(input)
 	if openErr != nil {
-		return fmt.Errorf("cp open: %s", openErr)
+		return openErr
 	}
 	defer file.Close()
 	// Stream file to backing store, using the hash of its content as the name.
 	if err = store.Put(file, digest); err != nil {
-		return fmt.Errorf("cp save: %s", err)
+		return fmt.Errorf("%s %s: %s", store, userInput, err)
 	}
 	logger("%s -> %s", userInput, digest)
 	return nil
 }
 
-// Search returns an array of files that match a prefix in the provided Store.
+// Search is a generic method that finds files matching a prefix in any Store.
 func Search(request string, store Store) ([]string, error) {
 	matches, err := store.Search(request)
 	if err != nil {
-		return matches, fmt.Errorf("search: %s", err)
+		return matches, err
 	}
 	return matches, nil
 }
 
-// Get retrieves a file from the provided Store and streams it to standard out.
+// Get is a generic method streams a file from any Store to stdout.
 func Get(request string, store Store, logger Logger) error {
 	matches, err := Search(request, store)
 	if err != nil {
-		return fmt.Errorf("get: %s", err)
+		return fmt.Errorf("search: %s", err)
 	}
 	if len(matches) != 1 {
 		return fmt.Errorf("%d files matched", len(matches))
 	}
 	file, getErr := store.Get(matches[0])
 	if getErr != nil {
-		log.Fatalf("get failed: %s", err)
+		return err
 	}
 	// TODO: deal with responsibility of file closing
 	io.Copy(os.Stdout, file)
