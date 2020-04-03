@@ -1,103 +1,101 @@
 package main
 
 import (
-	"fmt"
 	"github.com/docopt/docopt-go"
 	"github.com/korovkin/limiter"
-	"io"
+	"github.com/tkellen/memorybox/lib"
 	"log"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
-const concurrency = 10
 const version = "dev"
-const tempPrefix = "memorybox"
 const usage = `memorybox
 
 Usage:
-  $0 local save [--root=<path>] <file>...
-  $0 s3 save <bucket> <file>...
+  $0 [--root=<path> --concurrency=<num> --debug] put local <glob>...
+  $0 [--concurrency=<num> --debug] put s3 <bucket> <glob>...
+  $0 [--root=<path> --debug] get local <glob>
+  $0 [--debug] get s3 <bucket> <glob>
 
 Options:
-  -h --help          Show this screen.
-  -r --root=<path>   Root storage path (local mode only) [default: ~/memorybox]
-  -v --version       Show version.
+  -c --concurrency=<num>   Max number of concurrent operations [default: 10].
+  -d --debug               Show debugging output [default: false].
+  -h --help                Show this screen.
+  -r --root=<path>         Root store path (local only) [default: ~/memorybox].
+  -v --verbose             Show version.
 `
 
-// Store defines a storage engine that can save and index content.
-type Store interface {
-	Save(io.Reader, string) error
-	Exists(string) bool
-}
-
 func main() {
-	// don't show timestamp when logging
-	log.SetFlags(0)
-	// respect what the user named the binary
-	usage := strings.ReplaceAll(usage, "$0", filepath.Base(os.Args[0]))
-	// parse command line arguments
-	cli, _ := docopt.ParseArgs(usage, os.Args[1:], version)
-	// determine which command we are running
-	saving := cli["save"].(bool)
-	local := cli["local"].(bool)
-	s3 := cli["s3"].(bool)
-	// prep our backing store
-	var store Store
+	var command string
+	var concurrency int
+	var store memorybox.Store
 	var err error
-	if local {
-		store, err = NewLocalStore(cli["--root"].(string))
+	// Respect what the user named the binary.
+	usage := strings.ReplaceAll(usage, "$0", filepath.Base(os.Args[0]))
+	// Parse command line arguments.
+	cli, _ := docopt.ParseArgs(usage, os.Args[1:], version)
+	// Determine which command we are running.
+	if cli["put"].(bool) {
+		command = "put"
 	}
-	if s3 {
-		store, err = NewObjectStore(cli["<bucket>"].(string))
+	if cli["get"].(bool) {
+		command = "get"
 	}
+	// Prep our backing store.
+	if cli["local"].(bool) {
+		store, err = memorybox.NewLocalStore(cli["--root"].(string))
+	}
+	if cli["s3"].(bool) {
+		store, err = memorybox.NewObjectStore(cli["<bucket>"].(string))
+	}
+	// Bail out if we couldn't instantiate the backing store.
 	if err != nil {
 		log.Fatal(err)
 	}
-	// determine which files we are operating on
-	files := cli["<file>"].([]string)
-	// execute save method
-	if saving {
+	// Make informational logging silent by default with a noop function.
+	var logger memorybox.Logger
+	// Enable information logging while in debug mode.
+	if cli["--debug"].(bool) {
+		logger = log.Printf
+	}
+	// Remove timestamp from any log messages.
+	log.SetFlags(0)
+	// Determine which files we are operating on.
+	files := cli["<glob>"].([]string)
+
+	// Execute put command.
+	if command == "put" {
+		// Configure maximum concurrent operations.
+		if s, err := strconv.ParseInt(cli["--concurrency"].(string), 10, 8); err == nil {
+			concurrency = int(s)
+		}
+		// Configure concurrency limiting.
 		limit := limiter.NewConcurrencyLimiter(concurrency)
+		// Process every input with a limit on how fast this is performed.
 		for _, input := range files {
+			// Save input in a variable that will be in scope for the closure below.
 			path := input
+			// Execute the puts as fast as we've allowed.
 			limit.Execute(func() {
-				if err := process(path, store); err != nil {
+				if err := memorybox.Put(path, store, logger); err != nil {
 					log.Printf("bad deal: %s", err)
 				}
 			})
 		}
+		// Wait for all copy operations to complete
 		limit.Wait()
 	}
-}
 
-// process takes an input (stdin, file or url) and sends the bits within to the
-// provided store under a content-addressable location.
-func process(input string, store Store) error {
-	filepath, digest, err := prepare(input)
+	// Execute get command.
+	if command == "get" {
+		err = memorybox.Get(files[0], store, logger)
+	}
+
 	if err != nil {
-		log.Fatalf("hashing failed: %s", err)
+		log.Printf("%s", err)
+		os.Exit(1)
 	}
-	// if our input was buffered to a temporary file, remove it when we're done
-	if filepath != input {
-		defer os.Remove(filepath)
-	}
-	// skip file if it has already been stored
-	if store.Exists(digest) {
-		log.Printf("skipped: %s (exists at %s)", input, digest)
-		return nil
-	}
-	// no matter where the data came from, it should now be in a file on disk.
-	// open it for streaming to the backing store.
-	file, openErr := os.Open(filepath)
-	if openErr != nil {
-		return fmt.Errorf("unable to open file: %s", openErr)
-	}
-	defer file.Close()
-	if err = store.Save(file, digest); err != nil {
-		return fmt.Errorf("saving failed: %s", err)
-	}
-	log.Printf("stored: %s (%s)", input, digest)
-	return nil
 }

@@ -16,19 +16,22 @@ in the prior art section.
 ## Non-Goals
 * Being a generalized point-in-time backup solution for in-progress creations.
 * Making it easy to manage absolutely every digital artifact one has produced.
+* Providing a UI to interact with files that have been stored.
 
 ## Goals
 Imagine a memory box you might find or make in real life. It likely contains
 carefully selected objects of personal sentimental value. These are the types of
-things this project is designed to make easy to store and retrieve.
+digital artifacts this project is designed to make easy to catalog. Separate
+projects will be created to showcase the contents within.
  
 ## Try it
 Clone this repo and run the following:
 ```sh
-go build ./...
-echo "wat" | ./memorybox local save -
-./memorybox local save https://scaleout.team/logo.svg
-./memorybox local save $(find -maxdepth 1 -type f)
+go build
+echo "wat" | ./memorybox -d put local -
+./memorybox -d get local sha256-19a
+./memorybox -d put local https://scaleout.team/logo.svg
+./memorybox -d put local $(find -type f)
 ```
 
 ## Prior Art

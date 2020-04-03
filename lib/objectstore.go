@@ -1,4 +1,4 @@
-package main
+package memorybox
 
 import (
 	"fmt"
@@ -27,12 +27,35 @@ func NewObjectStore(bucket string) (*ObjectStore, error) {
 	}, nil
 }
 
-// Save writes the content of an io.Reader to object storage.
-func (s *ObjectStore) Save(src io.Reader, key string) error {
+// Put writes the content of an io.Reader to object storage.
+func (s *ObjectStore) Put(src io.Reader, key string) error {
 	if _, err := s.Client.PutObject(s.Bucket, key, src, -1, minio.PutObjectOptions{}); err != nil {
 		return fmt.Errorf("object store failed to put: %s", err)
 	}
 	return nil
+}
+
+// Search finds an object in storage by prefix and returns an array of matches
+func (s *ObjectStore) Search(search string) ([]string, error) {
+	var matches []string
+	done := make(chan struct{})
+	defer close(done)
+	objects := s.Client.ListObjectsV2(s.Bucket, search, true, done)
+	for object := range objects {
+		if object.Err == nil {
+			matches = append(matches, object.Key)
+		}
+	}
+	return matches, nil
+}
+
+// Get finds an object in storage by name and returns an io.Reader for it.
+func (s *ObjectStore) Get(key string) (io.Reader, error) {
+	object, err := s.Client.GetObject(s.Bucket, key, minio.GetObjectOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("object store failed to get: %s", err)
+	}
+	return object, nil
 }
 
 // Exists determines if a given file exists in the object store already.
