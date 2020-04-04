@@ -12,7 +12,7 @@ vet:
 	go vet ./...
 
 test:
-	go test -v -short ./...
+	go test -v ./... -coverprofile /dev/null
 
 build: fmt lint vet test
 	go build
