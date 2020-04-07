@@ -31,7 +31,7 @@ go build
 echo "wat" | ./memorybox -d put local -
 ./memorybox -d get local sha256-19a
 ./memorybox -d put local https://scaleout.team/logo.svg
-./memorybox -d put local $(find -type f)
+./memorybox -d put local **/*.go
 ```
 
 ## Prior Art
