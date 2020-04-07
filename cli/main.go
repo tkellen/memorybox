@@ -6,31 +6,44 @@ import (
 	"github.com/korovkin/limiter"
 	"github.com/tkellen/memorybox/lib"
 	"io"
+	"os"
+	"path"
 	"strings"
 )
 
-// Logger defines a method prototype for logging output.
-type Logger func(string, ...interface{})
-
-// Command specifies the execution of an action, typically configured by the
-// using the command line interface.
+// Command describes a request created by using the cli.
 type Command struct {
 	Action      string
-	Store       memorybox.Store
-	Logger      Logger
-	Request     string
-	Inputs      []string
+	Request     []string
 	Concurrency int
-	Reader      func(string) (io.ReadCloser, string, error)
-	Writer      func(io.ReadCloser) error
-	Cleanup     func() error
+	Logger      func(string, ...interface{})
+	Store       memorybox.Store
+	// All network and disk IO operations are abstracted in the methods below.
+	// This separation should be maintained for ease of testing.
+	reader  func(string, string) (io.ReadCloser, string, error)
+	writer  func(io.ReadCloser) error
+	cleanup func(string) error
+	tempDir string
+}
+
+// New instantiates a Command with references to methods that interact with the
+// network and local disk to complete their operations (these are mocked to unit
+// test the public functionality of this package).
+func New() *Command {
+	return &Command{
+		Logger:  func(format string, v ...interface{}) {},
+		reader:  inputReader,
+		writer:  outputWriter,
+		cleanup: wipeDir,
+		tempDir: path.Join(os.TempDir(), "mb"),
+	}
 }
 
 // Dispatch runs commands as defined from the cli.
 func (cmd *Command) Dispatch() error {
 	cmd.Logger("Action: %s\nStore: %s", cmd.Action, cmd.Store)
 	if cmd.Action == "put" {
-		return cmd.putAll()
+		return cmd.put()
 	}
 	if cmd.Action == "get" {
 		return cmd.get()
@@ -38,22 +51,40 @@ func (cmd *Command) Dispatch() error {
 	return errors.New("unrecognized command")
 }
 
-// putAll sends all inputs to the backing store.
-func (cmd *Command) putAll() error {
+// Get fetches a single requested object from a store and sends it to stdout.
+func (cmd *Command) get() error {
+	cmd.Logger("Request: %s", cmd.Request[0])
+	matches, err := cmd.Store.Search(cmd.Request[0])
+	if err != nil {
+		return fmt.Errorf("search: %w", err)
+	}
+	if len(matches) != 1 {
+		return fmt.Errorf("%d matches", len(matches))
+	}
+	data, getErr := cmd.Store.Get(matches[0])
+	if getErr != nil {
+		return getErr
+	}
+	return cmd.writer(data)
+}
+
+// put attempts to persist any number of inputs into a store with a user-defined
+// limit on the number of operations that can be run concurrently.
+func (cmd *Command) put() error {
 	var errs []string
 	cmd.Logger("Concurrency: %d\n", cmd.Concurrency)
-	if len(cmd.Inputs) == 1 {
-		cmd.Logger("Input: %s", cmd.Inputs[0])
+	if len(cmd.Request) == 1 {
+		cmd.Logger("Input: %s", cmd.Request[0])
 	} else {
-		cmd.Logger("Inputs:\n  %s", strings.Join(cmd.Inputs, "\n  "))
+		cmd.Logger("Inputs:\n  %s", strings.Join(cmd.Request, "\n  "))
 	}
 	// Configure maximum concurrency.
 	limit := limiter.NewConcurrencyLimiter(cmd.Concurrency)
 	// Iterate over all inputs.
-	for _, input := range cmd.Inputs {
+	for _, input := range cmd.Request {
 		input := input // sad hack to ensure closure below gets right value
 		limit.Execute(func() {
-			if err := cmd.put(input); err != nil {
+			if err := cmd.putOne(input); err != nil {
 				errs = append(errs, err.Error())
 			}
 		})
@@ -61,7 +92,7 @@ func (cmd *Command) putAll() error {
 	// Wait for all concurrent operations to complete.
 	limit.Wait()
 	// Clean up any temporary files produced during execution.
-	if err := cmd.Cleanup(); err != nil {
+	if err := cmd.cleanup(cmd.tempDir); err != nil {
 		errs = append(errs, err.Error())
 	}
 	// If we hit errors for any of the inputs, collapse them into a single
@@ -72,10 +103,10 @@ func (cmd *Command) putAll() error {
 	return nil
 }
 
-// put sends a single user-defined input into the backing store.
-func (cmd *Command) put(input string) error {
+// putOne persists a single input to a store if it is not already present.
+func (cmd *Command) putOne(input string) error {
 	// Get io.ReadCloser and content hash for defined input.
-	data, digest, err := cmd.Reader(input)
+	data, digest, err := cmd.reader(input, cmd.tempDir)
 	if err != nil {
 		return err
 	}
@@ -92,21 +123,4 @@ func (cmd *Command) put(input string) error {
 	}
 	cmd.Logger("%s -> %s", input, digest)
 	return nil
-}
-
-// get fetches object by key and sends it to the configured writer.
-func (cmd *Command) get() error {
-	cmd.Logger("Request: %s", cmd.Request)
-	matches, err := cmd.Store.Search(cmd.Request)
-	if err != nil {
-		return fmt.Errorf("search: %w", err)
-	}
-	if len(matches) != 1 {
-		return fmt.Errorf("%d matches", len(matches))
-	}
-	data, getErr := cmd.Store.Get(matches[0])
-	if getErr != nil {
-		return getErr
-	}
-	return cmd.Writer(data)
 }

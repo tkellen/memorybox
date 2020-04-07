@@ -1,12 +1,9 @@
 package main
 
 import (
-	"encoding/hex"
 	"github.com/docopt/docopt-go"
-	"github.com/minio/sha256-simd"
 	"github.com/tkellen/memorybox/cli"
 	"github.com/tkellen/memorybox/lib"
-	"io"
 	"log"
 	"os"
 	"path/filepath"
@@ -16,10 +13,10 @@ import (
 
 const version = "dev"
 const usage = `Usage:
-  $0 [--root=<path> --concurrency=<num> --debug] put local <files>...
+  $0 [--root=<path> --concurrency=<num> --debug] put local [--] <files>...
   $0 [--root=<path> --debug] get local <hash>
   $0 [--root=<path> --debug] annotate local <hash> <key> <value>
-  $0 [--concurrency=<num> --debug] put s3 <bucket> <files>...
+  $0 [--concurrency=<num> --debug] put s3 <bucket> [--] <files>...
   $0 [--debug] get s3 <bucket> <hash> 
   $0 [--debug] annotate s3 <bucket> <hash> <key> <value>
 
@@ -32,8 +29,6 @@ Options:
 `
 
 func main() {
-	var cmd *cli.Command
-	var err error
 	// Remove timestamp from any log messages.
 	log.SetFlags(0)
 	// Respect what the user named the binary.
@@ -41,9 +36,7 @@ func main() {
 	// Parse command line arguments.
 	opts, _ := docopt.ParseArgs(usage, os.Args[1:], version)
 	// Initialize and run desired action.
-	if cmd, err = processOpts(opts); err == nil {
-		err = cmd.Dispatch()
-	}
+	err := execute(opts)
 	// If initialization or execution failed, log why and exit non-zero.
 	if err != nil {
 		log.Printf("Error(s):\n%s", err)
@@ -51,52 +44,53 @@ func main() {
 	}
 }
 
-func processOpts(opts docopt.Opts) (*cli.Command, error) {
-	var err error
-	var store memorybox.Store
-	// Configure local storage mode.
-	if opts["local"].(bool) {
-		store, err = memorybox.NewLocalStore(opts["--root"].(string))
+func execute(opts docopt.Opts) error {
+	// Begin configuring command line executor.
+	cmd := cli.New()
+	// Configure local store mode.
+	if flag, ok := opts["local"].(bool); ok && flag {
+		if root, ok := opts["--root"].(string); ok {
+			store, err := memorybox.NewLocalStore(root)
+			if err != nil {
+				return err
+			}
+			cmd.Store = store
+		}
 	}
 	// Configure object storage mode.
-	if opts["s3"].(bool) {
-		store, err = memorybox.NewObjectStore(opts["bucket"].(string))
-	}
-	// Begin configuring command line executor.
-	cmd := &cli.Command{
-		Store:   store,
-		Logger:  func(format string, v ...interface{}) {},
-		Reader:  inputReader,
-		Writer:  outputWriter,
-		Cleanup: cleanup,
+	if flag, ok := opts["s3"].(bool); ok && flag {
+		if bucket, ok := opts["<bucket>"].(string); ok {
+			store, err := memorybox.NewObjectStore(bucket)
+			if err != nil {
+				return err
+			}
+			cmd.Store = store
+		}
 	}
 	// Enable informational logging while in debug mode.
-	if opts["--debug"].(bool) {
+	if flag, ok := opts["--debug"].(bool); ok && flag {
 		cmd.Logger = log.Printf
 	}
 	// If using put action, configure it.
-	if opts["put"].(bool) {
+	if flag, ok := opts["put"].(bool); ok && flag {
 		cmd.Action = "put"
-		cmd.Inputs = opts["<files>"].([]string)
+		if files, ok := opts["<files>"].([]string); ok {
+			cmd.Request = files
+		}
 	}
 	// If using get action, configure it.
-	if opts["get"].(bool) {
+	if flag, ok := opts["get"].(bool); ok && flag {
 		cmd.Action = "get"
-		cmd.Request = opts["<hash>"].(string)
+		if hash, ok := opts["<hash>"].(string); ok {
+			cmd.Request = []string{hash}
+		}
 	}
 	// Determine maximum concurrent operations.
-	if s, err := strconv.ParseInt(opts["--concurrency"].(string), 10, 8); err == nil {
-		cmd.Concurrency = int(s)
+	if flag, ok := opts["--concurrency"].(string); ok {
+		concurrency, err := strconv.ParseInt(flag, 10, 8)
+		if err == nil {
+			cmd.Concurrency = int(concurrency)
+		}
 	}
-	return cmd, err
-}
-
-// digest computes the sha256 message digest of a provided io.ReadCloser.
-func digest(input io.ReadCloser) (string, error) {
-	hash := sha256.New()
-	if _, err := io.Copy(hash, input); err != nil {
-		return "", nil
-	}
-	input.Close()
-	return "sha256-" + hex.EncodeToString(hash.Sum(nil)), nil
+	return cmd.Dispatch()
 }

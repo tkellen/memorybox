@@ -1,7 +1,5 @@
 // These are unit tests that validate how func (cmd *Command) Dispatch() behaves
-// when called with configurations that are supported by the cli. The underlying
-// memorybox.Store is a in-memory map whose keys exactly match the value of what
-// is stored in them (aka, still content addressable, but not hashed).
+// when called with configurations that are supported by the cli.
 package cli
 
 import (
@@ -15,6 +13,28 @@ import (
 	"testing/iotest"
 )
 
+func newTestCommand(action string) *Command {
+	cmd := New()
+	cmd.Action = action
+	cmd.Concurrency = 1
+	// in-memory map whose keys exactly match the value of what is stored in
+	// them (aka, still content addressable, but not hashed).
+	cmd.Store = &testStore{
+		Data: map[string][]byte{},
+	}
+	cmd.reader = func(input string, _ string) (io.ReadCloser, string, error) {
+		return ioutil.NopCloser(strings.NewReader(input)), input, nil
+	}
+	cmd.writer = func(input io.ReadCloser) error {
+		input.Close()
+		return nil
+	}
+	cmd.cleanup = func(_ string) error {
+		return nil
+	}
+	return cmd
+}
+
 func TestUnrecognizedCommand(t *testing.T) {
 	cmd := newTestCommand("wat")
 	expected := "unrecognized command"
@@ -27,7 +47,7 @@ func TestUnrecognizedCommand(t *testing.T) {
 func TestPutOneSuccess(t *testing.T) {
 	input := "one"
 	cmd := newTestCommand("put")
-	cmd.Inputs = []string{input}
+	cmd.Request = []string{input}
 	if err := cmd.Dispatch(); err != nil {
 		t.Fatalf("did not expect: %s", err)
 	}
@@ -35,7 +55,7 @@ func TestPutOneSuccess(t *testing.T) {
 
 func TestPutManySuccess(t *testing.T) {
 	cmd := newTestCommand("put")
-	cmd.Inputs = []string{"one", "two"}
+	cmd.Request = []string{"one", "two"}
 	if err := cmd.Dispatch(); err != nil {
 		t.Fatalf("did not expect: %s", err)
 	}
@@ -48,7 +68,7 @@ func TestPutConcurrencyLimiting(t *testing.T) {
 func TestPutExistsSuccess(t *testing.T) {
 	var logSkipped bool
 	cmd := newTestCommand("put")
-	cmd.Inputs = []string{"one"}
+	cmd.Request = []string{"one"}
 	cmd.Logger = func(message string, args ...interface{}) {
 		if strings.Contains(message, "skipped") {
 			logSkipped = true
@@ -68,8 +88,8 @@ func TestPutExistsSuccess(t *testing.T) {
 func TestPutFailureReadingFileToHash(t *testing.T) {
 	expected := errors.New("read error")
 	cmd := newTestCommand("put")
-	cmd.Inputs = []string{"one"}
-	cmd.Reader = func(input string) (io.ReadCloser, string, error) {
+	cmd.Request = []string{"one"}
+	cmd.reader = func(input string, _ string) (io.ReadCloser, string, error) {
 		return nil, "", expected
 	}
 	actual := cmd.Dispatch()
@@ -80,8 +100,8 @@ func TestPutFailureReadingFileToHash(t *testing.T) {
 
 func TestPutFailureReadingFileToPersist(t *testing.T) {
 	cmd := newTestCommand("put")
-	cmd.Inputs = []string{"one"}
-	cmd.Reader = func(input string) (io.ReadCloser, string, error) {
+	cmd.Request = []string{"one"}
+	cmd.reader = func(input string, _ string) (io.ReadCloser, string, error) {
 		return ioutil.NopCloser(
 			iotest.TimeoutReader(strings.NewReader(input)),
 		), input, nil
@@ -98,8 +118,8 @@ func TestPutFailureReadingFileToPersist(t *testing.T) {
 func TestPutCleanupFailure(t *testing.T) {
 	expected := errors.New("cleanup error")
 	cmd := newTestCommand("put")
-	cmd.Inputs = []string{"one"}
-	cmd.Cleanup = func() error {
+	cmd.Request = []string{"one"}
+	cmd.cleanup = func(_ string) error {
 		return expected
 	}
 	actual := cmd.Dispatch()
@@ -112,13 +132,13 @@ func TestGetSuccess(t *testing.T) {
 	var actual []byte
 	expected := []byte("test")
 	cmd := newTestCommand("get")
-	cmd.Request = "test"
+	cmd.Request = []string{"test"}
 	cmd.Store = &testStore{
 		Data: map[string][]byte{
 			"test": expected,
 		},
 	}
-	cmd.Writer = func(data io.ReadCloser) error {
+	cmd.writer = func(data io.ReadCloser) error {
 		actual, _ = ioutil.ReadAll(data)
 		return nil
 	}
@@ -133,7 +153,7 @@ func TestGetSuccess(t *testing.T) {
 func TestGetMissingFailure(t *testing.T) {
 	expected := errors.New("0 matches")
 	cmd := newTestCommand("get")
-	cmd.Request = "test"
+	cmd.Request = []string{"test"}
 	actual := cmd.Dispatch()
 	if actual == nil || !strings.Contains(actual.Error(), expected.Error()) {
 		t.Fatalf("expected error %s, got: %s", expected, actual)
@@ -143,7 +163,7 @@ func TestGetMissingFailure(t *testing.T) {
 func TestGetMultipleMatchFailure(t *testing.T) {
 	expected := errors.New("2 matches")
 	cmd := newTestCommand("get")
-	cmd.Request = "test"
+	cmd.Request = []string{"test"}
 	cmd.Store = &testStore{
 		Data: map[string][]byte{
 			"test-one": []byte("test-one"),
@@ -165,7 +185,7 @@ func TestGetStoreSearchFailure(t *testing.T) {
 		},
 		ForceSearchError: expected,
 	}
-	cmd.Request = "test"
+	cmd.Request = []string{"test"}
 	actual := cmd.Dispatch()
 	if actual == nil || !strings.Contains(actual.Error(), expected.Error()) {
 		t.Fatalf("expected error %s, got: %s", expected, actual)
@@ -175,13 +195,13 @@ func TestGetStoreSearchFailure(t *testing.T) {
 func TestGetWriterFailure(t *testing.T) {
 	expected := errors.New("write error")
 	cmd := newTestCommand("get")
-	cmd.Request = "test"
+	cmd.Request = []string{"test"}
 	cmd.Store = &testStore{
 		Data: map[string][]byte{
 			"test": []byte("test"),
 		},
 	}
-	cmd.Writer = func(_ io.ReadCloser) error {
+	cmd.writer = func(_ io.ReadCloser) error {
 		return expected
 	}
 	actual := cmd.Dispatch()
@@ -199,40 +219,11 @@ func TestGetStoreFailure(t *testing.T) {
 		},
 		ForceGetError: expected,
 	}
-	cmd.Request = "test"
+	cmd.Request = []string{"test"}
 	actual := cmd.Dispatch()
 	if actual == nil || !strings.Contains(actual.Error(), expected.Error()) {
 		t.Fatalf("expected error %s, got: %s", expected, actual)
 	}
-}
-
-// Start Test Helpers
-
-func newTestCommand(action string) *Command {
-	return &Command{
-		Action: action,
-		Store: &testStore{
-			Data: map[string][]byte{},
-		},
-		Logger:      func(string, ...interface{}) {},
-		Concurrency: 1,
-		Reader:      testReader,
-		Writer:      testWriter,
-		Cleanup:     testCleanup,
-	}
-}
-
-func testCleanup() error {
-	return nil
-}
-
-func testReader(input string) (io.ReadCloser, string, error) {
-	return ioutil.NopCloser(strings.NewReader(input)), input, nil
-}
-
-func testWriter(input io.ReadCloser) error {
-	input.Close()
-	return nil
 }
 
 // better than using a mocking library? ¯\_(ツ)_/¯
