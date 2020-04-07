@@ -15,6 +15,15 @@ import (
 	"testing/iotest"
 )
 
+func TestUnrecognizedCommand(t *testing.T) {
+	cmd := newTestCommand("wat")
+	expected := "unrecognized command"
+	actual := cmd.Dispatch()
+	if actual == nil || !strings.Contains(actual.Error(), expected) {
+		t.Fatalf("expected error %s, got: %s", expected, actual)
+	}
+}
+
 func TestPutOneSuccess(t *testing.T) {
 	input := "one"
 	cmd := newTestCommand("put")
@@ -148,7 +157,19 @@ func TestGetMultipleMatchFailure(t *testing.T) {
 }
 
 func TestGetStoreSearchFailure(t *testing.T) {
-	t.Log("TODO: trigger a failure on cmd.Store.Search")
+	expected := errors.New("failed")
+	cmd := newTestCommand("get")
+	cmd.Store = &testStore{
+		Data: map[string][]byte{
+			"test": []byte("test"),
+		},
+		ForceSearchError: expected,
+	}
+	cmd.Request = "test"
+	actual := cmd.Dispatch()
+	if actual == nil || !strings.Contains(actual.Error(), expected.Error()) {
+		t.Fatalf("expected error %s, got: %s", expected, actual)
+	}
 }
 
 func TestGetWriterFailure(t *testing.T) {
@@ -170,7 +191,19 @@ func TestGetWriterFailure(t *testing.T) {
 }
 
 func TestGetStoreFailure(t *testing.T) {
-	t.Log("TODO: trigger a failure on cmd.Store.Get")
+	expected := errors.New("failed")
+	cmd := newTestCommand("get")
+	cmd.Store = &testStore{
+		Data: map[string][]byte{
+			"test": []byte("test"),
+		},
+		ForceGetError: expected,
+	}
+	cmd.Request = "test"
+	actual := cmd.Dispatch()
+	if actual == nil || !strings.Contains(actual.Error(), expected.Error()) {
+		t.Fatalf("expected error %s, got: %s", expected, actual)
+	}
 }
 
 // Start Test Helpers
@@ -202,8 +235,11 @@ func testWriter(input io.ReadCloser) error {
 	return nil
 }
 
+// better than using a mocking library? ¯\_(ツ)_/¯
 type testStore struct {
-	Data map[string][]byte
+	Data             map[string][]byte
+	ForceSearchError error
+	ForceGetError    error
 }
 
 func (s *testStore) String() string {
@@ -220,6 +256,9 @@ func (s *testStore) Put(src io.ReadCloser, hash string) error {
 }
 
 func (s *testStore) Search(search string) ([]string, error) {
+	if s.ForceSearchError != nil {
+		return nil, s.ForceSearchError
+	}
 	var matches []string
 	for key := range s.Data {
 		if strings.HasPrefix(key, search) {
@@ -231,6 +270,9 @@ func (s *testStore) Search(search string) ([]string, error) {
 
 // Get finds an object in storage by name and returns an io.ReadCloser for it.
 func (s *testStore) Get(request string) (io.ReadCloser, error) {
+	if s.ForceGetError != nil {
+		return nil, s.ForceGetError
+	}
 	data := s.Data[request]
 	if data != nil {
 		return ioutil.NopCloser(bytes.NewReader(data)), nil

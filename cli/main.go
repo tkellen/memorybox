@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"github.com/korovkin/limiter"
 	"github.com/tkellen/memorybox/lib"
@@ -34,7 +35,7 @@ func (cmd *Command) Dispatch() error {
 	if cmd.Action == "get" {
 		return cmd.get()
 	}
-	return nil
+	return errors.New("unrecognized command")
 }
 
 // putAll sends all inputs to the backing store.
