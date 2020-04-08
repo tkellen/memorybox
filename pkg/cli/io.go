@@ -36,13 +36,6 @@ func inputReader(input string, tempDir string) (io.ReadCloser, string, error) {
 	return source, "sha256-" + hex.EncodeToString(hash.Sum(nil)), err
 }
 
-// outputWriter writes the content of data to stdout.
-func outputWriter(data io.ReadCloser) error {
-	_, err := io.Copy(os.Stdout, data)
-	data.Close()
-	return err
-}
-
 // wipeDir does just what you think it does.
 func wipeDir(dir string) error {
 	return os.RemoveAll(dir)

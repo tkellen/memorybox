@@ -1,9 +1,14 @@
 package main
 
 import (
+	"fmt"
 	"github.com/docopt/docopt-go"
-	"github.com/tkellen/memorybox/cli"
-	"github.com/tkellen/memorybox/lib"
+	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/pkg/credentials"
+	"github.com/mitchellh/go-homedir"
+	"github.com/tkellen/memorybox/pkg/cli"
+	"github.com/tkellen/memorybox/pkg/localstore"
+	"github.com/tkellen/memorybox/pkg/objectstore"
 	"log"
 	"os"
 	"path/filepath"
@@ -50,7 +55,11 @@ func execute(opts docopt.Opts) error {
 	// Configure local store mode.
 	if flag, ok := opts["local"].(bool); ok && flag {
 		if root, ok := opts["--root"].(string); ok {
-			store, err := memorybox.NewLocalStore(root)
+			expandedRoot, err := homedir.Expand(root)
+			if err != nil {
+				return fmt.Errorf("unable to expand path: %w", err)
+			}
+			store, err := localstore.New(expandedRoot)
 			if err != nil {
 				return err
 			}
@@ -60,11 +69,12 @@ func execute(opts docopt.Opts) error {
 	// Configure object storage mode.
 	if flag, ok := opts["s3"].(bool); ok && flag {
 		if bucket, ok := opts["<bucket>"].(string); ok {
-			store, err := memorybox.NewObjectStore(bucket)
+			creds := credentials.NewEnvAWS()
+			client, err := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
 			if err != nil {
 				return err
 			}
-			cmd.Store = store
+			cmd.Store = objectstore.New(client, bucket)
 		}
 	}
 	// Enable informational logging while in debug mode.

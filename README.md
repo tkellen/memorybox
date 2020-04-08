@@ -29,7 +29,7 @@ Clone this repo and run the following:
 ```sh
 go build
 echo "wat" | ./memorybox -d put local -
-./memorybox -d get local sha256-19a
+./memorybox -d get local sha256-19ad3616216eea07d6f1adb48a774dd61c822a5ae800ef43b65766372ee4869b
 ./memorybox -d put local https://scaleout.team/logo.svg
 ./memorybox -d put local **/*.go
 ```

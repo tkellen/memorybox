@@ -4,34 +4,22 @@ package cli
 
 import (
 	"bytes"
+	"github.com/tkellen/memorybox/pkg/test"
 	"io/ioutil"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"path"
-	"runtime"
 	"strings"
 	"testing"
-	"testing/iotest"
 )
-
-// get a path to a temporary directory that matches the callers function name
-func testTempDir() string {
-	pc := make([]uintptr, 10)
-	runtime.Callers(2, pc)
-	parts := strings.Split(runtime.FuncForPC(pc[0]).Name(), ".")
-	path := path.Join(os.TempDir(), parts[len(parts)-1])
-	os.RemoveAll(path)
-	return path
-}
 
 func TestInputReaderWithStdinSource(t *testing.T) {
 	t.Log("TODO: can this even be integration tested?")
 }
 
 func TestInputReaderWithHttpResource(t *testing.T) {
-	tempDir := testTempDir()
+	tempDir := test.TempDir()
 	defer os.RemoveAll(tempDir)
 	expectedOutput := []byte("test")
 	expectedHash := "sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
@@ -63,12 +51,8 @@ func TestInputReaderIoCopyFailure(t *testing.T) {
 	t.Log("TODO")
 }
 
-func TestOutputWriter(t *testing.T) {
-	t.Log("TODO")
-}
-
 func TestWipeDir(t *testing.T) {
-	dir := testTempDir()
+	dir := test.TempDir()
 	if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
 		log.Fatalf("creating temp directory :%s", err)
 	}
@@ -91,10 +75,10 @@ func TestInputToFile(t *testing.T) {
 }
 
 func TestWriteToTemp(t *testing.T) {
-	tempDir := testTempDir()
+	tempDir := test.TempDir()
 	defer os.RemoveAll(tempDir)
 	expected := []byte("test")
-	reader := ioutil.NopCloser(bytes.NewReader(expected))
+	reader := test.GoodReadCloser(expected)
 	filepath, err := writeToTemp(reader, tempDir)
 	if err != nil {
 		t.Fatal(err)
@@ -109,7 +93,7 @@ func TestWriteToTemp(t *testing.T) {
 }
 
 func TestWriteToTempCreateDirFailure(t *testing.T) {
-	data := ioutil.NopCloser(bytes.NewReader([]byte("test")))
+	data := test.GoodReadCloser([]byte("test"))
 	filepath, err := writeToTemp(data, "bad/nested/path")
 	if err == nil {
 		t.Fatal("expected failure to create directory")
@@ -120,7 +104,7 @@ func TestWriteToTempCreateDirFailure(t *testing.T) {
 }
 
 func TestWriteToTempCreateFileFailure(t *testing.T) {
-	data := ioutil.NopCloser(bytes.NewReader([]byte("test")))
+	data := test.GoodReadCloser([]byte("test"))
 	// so brittle. assumes you can't write here.
 	filepath, err := writeToTemp(data, "/")
 	if err == nil {
@@ -132,9 +116,9 @@ func TestWriteToTempCreateFileFailure(t *testing.T) {
 }
 
 func TestWriteToTempWriteFailure(t *testing.T) {
-	tempDir := testTempDir()
+	tempDir := test.TempDir()
 	defer os.RemoveAll(tempDir)
-	data := ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader([]byte("test"))))
+	data := test.TimeoutReadCloser([]byte("test"))
 	filepath, err := writeToTemp(data, tempDir)
 	if err == nil {
 		t.Fatal("expected error failing to read input")
