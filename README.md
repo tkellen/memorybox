@@ -4,8 +4,8 @@
 # Introduction
 On the shoulders of a lot of really cool projects I am teaching myself how to
 make a content addressable storage engine. At the time of this writing, I am
-aiming to keep the implementation to less than 500 readable lines of code (not
-including comments or tests).
+aiming to keep the implementation to less than 500 readable lines of code with
+100% test coverage (comments / tests not included in line count).
 
 It will be possible to use local disk or any storage service that provides a
 s3-compatible API to ensure the bits that go in stand the test of time.
@@ -13,16 +13,16 @@ s3-compatible API to ensure the bits that go in stand the test of time.
 I will probably implement some kind of adapter for all of the projects listed
 in the prior art section.
 
-## Non-Goals
-* Being a generalized point-in-time backup solution for in-progress creations.
-* Making it easy to manage absolutely every digital artifact one has produced.
-* Providing a UI to interact with files that have been stored.
-
 ## Goals
 Imagine a memory box you might find or make in real life. It likely contains
 carefully selected objects of personal sentimental value. These are the types of
 digital artifacts this project is designed to make easy to catalog. Separate
 projects will be created to showcase the contents within.
+ 
+## Non-Goals
+* Being a generalized point-in-time backup solution for in-progress creations.
+* Making it easy to manage absolutely every digital artifact one has produced.
+* Providing a UI to interact with files that have been stored.
  
 ## Try it
 Clone this repo and run the following:
@@ -39,3 +39,10 @@ echo "wat" | ./memorybox -d put local -
 * [IPFS](https://ipfs.io/)
 * [Scuttlebutt](https://scuttlebutt.nz/)
 * [Dat](https://dat.foundation/)
+
+## Final Thoughts
+This project is essentially an over-engineered version of this:
+```
+aws s3 cp file s3://bucket/sha256-$((sha256sum < file) | cut -d' ' -f1)
+```
+...or, the '57 Chevy version of Perkeep.
