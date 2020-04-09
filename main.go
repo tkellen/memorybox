@@ -3,104 +3,92 @@ package main
 import (
 	"fmt"
 	"github.com/docopt/docopt-go"
-	"github.com/minio/minio-go"
-	"github.com/minio/minio-go/pkg/credentials"
+	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v6/pkg/credentials"
 	"github.com/mitchellh/go-homedir"
 	"github.com/tkellen/memorybox/pkg/cli"
 	"github.com/tkellen/memorybox/pkg/localstore"
 	"github.com/tkellen/memorybox/pkg/objectstore"
 	"log"
 	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
+	"path"
 )
 
 const version = "dev"
 const usage = `Usage:
-  $0 [--root=<path> --concurrency=<num> --debug] put local [--] <files>...
-  $0 [--root=<path> --debug] get local <hash>
-  $0 [--root=<path> --debug] annotate local <hash> <key> <value>
-  $0 [--concurrency=<num> --debug] put s3 <bucket> [--] <files>...
-  $0 [--debug] get s3 <bucket> <hash> 
-  $0 [--debug] annotate s3 <bucket> <hash> <key> <value>
+  %[1]s [options] put local <files>...
+  %[1]s [options] put s3 <bucket> <files>...
+  %[1]s [options] get local <files>...
+  %[1]s [options] get s3 <bucket> <files>...
 
 Options:
   -c --concurrency=<num>   Max number of concurrent operations [default: 10].
   -d --debug               Show debugging output [default: false].
-  -h --help                Show this screen.
   -r --root=<path>         Root store path (local only) [default: ~/memorybox].
-  -v --version             Show version.
-`
+  -h --help                Show this screen.
+  -v --version             Show version.`
+
+type Flags struct {
+	Put         bool
+	Get         bool
+	Local       bool
+	Root        string
+	S3          bool
+	Bucket      string
+	Files       []string
+	Concurrency int
+	Debug       bool
+}
+
+func (flags Flags) run() error {
+	cmd := cli.New()
+	cmd.Request = flags.Files
+	if flags.Put {
+		cmd.Action = "put"
+	}
+	if flags.Get {
+		cmd.Action = "get"
+	}
+	cmd.Concurrency = flags.Concurrency
+	if flags.Debug {
+		cmd.Logger = log.Printf
+	}
+	if flags.Local {
+		root, err := homedir.Expand(flags.Root)
+		if err != nil {
+			return err
+		}
+		store, err := localstore.New(root)
+		if err != nil {
+			return err
+		}
+		cmd.Store = store
+	}
+	if flags.S3 {
+		// TODO support this in some real way with flags?
+		creds := credentials.NewEnvAWS()
+		client, err := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
+		if err != nil {
+			return err
+		}
+		cmd.Store = objectstore.New(client, flags.Bucket)
+	}
+	return cmd.Dispatch()
+}
 
 func main() {
-	// Remove timestamp from any log messages.
+	var err error
+	var flags Flags
+	// Ensure timestamp is not included in logging messages.
 	log.SetFlags(0)
-	// Respect what the user named the binary.
-	usage := strings.ReplaceAll(usage, "$0", filepath.Base(os.Args[0]))
 	// Parse command line arguments.
-	opts, _ := docopt.ParseArgs(usage, os.Args[1:], version)
-	// Initialize and run desired action.
-	err := execute(opts)
-	// If initialization or execution failed, log why and exit non-zero.
+	opts, _ := docopt.ParseArgs(fmt.Sprintf(usage, path.Base(os.Args[0])), os.Args[1:], version)
+	// Populate flags struct with our command line options.
+	if err = opts.Bind(&flags); err == nil {
+		err = flags.run()
+	}
 	if err != nil {
 		log.Printf("Error(s):\n%s", err)
 		os.Exit(1)
 	}
-}
-
-func execute(opts docopt.Opts) error {
-	// Begin configuring command line executor.
-	cmd := cli.New()
-	// Configure local store mode.
-	if flag, ok := opts["local"].(bool); ok && flag {
-		if root, ok := opts["--root"].(string); ok {
-			expandedRoot, err := homedir.Expand(root)
-			if err != nil {
-				return fmt.Errorf("unable to expand path: %w", err)
-			}
-			store, err := localstore.New(expandedRoot)
-			if err != nil {
-				return err
-			}
-			cmd.Store = store
-		}
-	}
-	// Configure object storage mode.
-	if flag, ok := opts["s3"].(bool); ok && flag {
-		if bucket, ok := opts["<bucket>"].(string); ok {
-			creds := credentials.NewEnvAWS()
-			client, err := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
-			if err != nil {
-				return err
-			}
-			cmd.Store = objectstore.New(client, bucket)
-		}
-	}
-	// Enable informational logging while in debug mode.
-	if flag, ok := opts["--debug"].(bool); ok && flag {
-		cmd.Logger = log.Printf
-	}
-	// If using put action, configure it.
-	if flag, ok := opts["put"].(bool); ok && flag {
-		cmd.Action = "put"
-		if files, ok := opts["<files>"].([]string); ok {
-			cmd.Request = files
-		}
-	}
-	// If using get action, configure it.
-	if flag, ok := opts["get"].(bool); ok && flag {
-		cmd.Action = "get"
-		if hash, ok := opts["<hash>"].(string); ok {
-			cmd.Request = []string{hash}
-		}
-	}
-	// Determine maximum concurrent operations.
-	if flag, ok := opts["--concurrency"].(string); ok {
-		concurrency, err := strconv.ParseInt(flag, 10, 8)
-		if err == nil {
-			cmd.Concurrency = int(concurrency)
-		}
-	}
-	return cmd.Dispatch()
 }
