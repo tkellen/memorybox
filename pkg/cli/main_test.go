@@ -34,11 +34,11 @@ func newTestCommand(action string, seed map[string][]byte) *Command {
 		Data: keys,
 	}
 	// return an io.ReadCloser that contains the contents of the input string
-	cmd.source = func(input string, _ string) (io.ReadCloser, string, error) {
+	cmd.read = func(input string, _ io.ReadCloser, _ string) (io.ReadCloser, string, error) {
 		return ioutil.NopCloser(strings.NewReader(input)), input, nil
 	}
 	_, writer, _ := os.Pipe()
-	cmd.sink = writer
+	cmd.stdout = writer
 	cmd.cleanup = func(_ string) error {
 		return nil
 	}
@@ -108,33 +108,77 @@ func TestPutExistsSuccess(t *testing.T) {
 	}
 }
 
-func TestPutFailureReadingFileToHash(t *testing.T) {
-	expected := errors.New("read error")
+func TestPutFailureReadingInput(t *testing.T) {
 	cmd := newTestCommand("put", map[string][]byte{})
 	cmd.Request = []string{"one"}
-	cmd.source = func(input string, _ string) (io.ReadCloser, string, error) {
-		return nil, "", expected
+	readCount := 0
+	cmd.read = func(input string, _ io.ReadCloser, _ string) (io.ReadCloser, string, error) {
+		// This method is called twice during a put, once to open the input for
+		// hashing, and a second time to open the input for streaming to the
+		// store. We'll use this method three times to catch both failures. Here
+		// is what is being simulated for each call:
+		// 1. First call failing simulates a failure trying to read the file
+		//    that is being put. This ends the first test.
+		// 2. Second call succeeding simulates a successful first read.
+		// 3. Third call failing simulates a failure to read the file a second
+		//    time for streaming to the store. This ends the second test.
+		readCount++
+		if readCount == 1 || readCount == 3 {
+			return nil, "", fmt.Errorf("bad %d", readCount)
+		}
+		return ioutil.NopCloser(strings.NewReader(input)), input, nil
 	}
-	actual := cmd.Dispatch()
-	if actual == nil || !strings.Contains(actual.Error(), expected.Error()) {
-		t.Fatalf("expected error %s, got: %s", expected, actual)
+	actualFirstRead := cmd.Dispatch()
+	if actualFirstRead == nil || !strings.Contains(actualFirstRead.Error(), "bad 1") {
+		t.Fatalf("expected error %s, got: %s", "bad 1", actualFirstRead)
+	}
+
+	actualSecondRead := cmd.Dispatch()
+	if actualSecondRead == nil || !strings.Contains(actualSecondRead.Error(), "bad 3") {
+		t.Fatalf("expected error %s, got: %s", "bad 3", actualSecondRead)
 	}
 }
 
-func TestPutFailureReadingFileToPersist(t *testing.T) {
+func TestPutFailureBadReaders(t *testing.T) {
 	cmd := newTestCommand("put", map[string][]byte{})
-	cmd.Request = []string{"one"}
-	cmd.source = func(input string, _ string) (io.ReadCloser, string, error) {
-		return ioutil.NopCloser(
-			iotest.TimeoutReader(strings.NewReader(input)),
-		), input, nil
+	cmd.Request = []string{"somedata"}
+	readCount := 0
+	cmd.read = func(input string, _ io.ReadCloser, _ string) (io.ReadCloser, string, error) {
+		// This method is called twice during a put, once to open the input for
+		// hashing, and a second time to open the input for streaming to the
+		// store. We'll use this method three times to catch both failures. Here
+		// is what is being simulated for each call:
+		// 1. First call returning a bad reader simulates trying to put a remote
+		//    url and the request timing out. This will end the first test when
+		//    hashing the response fails.
+		// 2. Second call returning a good reader will simulate a successful
+		//    remote request where the data is persisted to a temporary file as
+		//    it is hashed.
+		// 3. Third call returning a bad reader will simulate a bad read on the
+		//    temporary file created in step 2. This will end the second test
+		//    case.
+		readCount++
+		if readCount == 1 || readCount == 3 {
+			return ioutil.NopCloser(
+				iotest.TimeoutReader(strings.NewReader(input)),
+			), input, nil
+		}
+		return ioutil.NopCloser(strings.NewReader(input)), input, nil
 	}
-	err := cmd.Dispatch()
-	if err == nil {
-		t.Fatal("expected error failing to read input")
+	hashFailure := cmd.Dispatch()
+	if hashFailure == nil {
+		t.Fatal("expected error failing to read input for hashing")
 	}
-	if !strings.Contains(err.Error(), "timeout") {
-		t.Fatalf("expected timout error: %s", err)
+	if !strings.Contains(hashFailure.Error(), "hashing: timeout") {
+		t.Fatalf("expected timout error: %s", hashFailure)
+	}
+
+	putFailure := cmd.Dispatch()
+	if putFailure == nil {
+		t.Fatal("expected error failing to send input to store")
+	}
+	if !strings.Contains(putFailure.Error(), "timeout") {
+		t.Fatalf("expected timout error: %s", putFailure)
 	}
 }
 
@@ -158,7 +202,7 @@ func TestGetSuccess(t *testing.T) {
 		"test": expected,
 	})
 	cmd.Request = []string{"test"}
-	cmd.sink = writer
+	cmd.stdout = writer
 	if err := cmd.Dispatch(); err != nil {
 		t.Fatalf("did not expect: %s", err)
 	}
@@ -229,7 +273,7 @@ func TestGetWriterFailure(t *testing.T) {
 		"test": []byte("test"),
 	})
 	cmd.Request = []string{"test"}
-	cmd.sink = writer
+	cmd.stdout = writer
 	actual := cmd.Dispatch()
 	if actual == nil {
 		t.Fatalf("expected error writing")

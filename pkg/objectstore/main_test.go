@@ -17,7 +17,7 @@ package objectstore
 import (
 	"errors"
 	"fmt"
-	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/v6"
 	"github.com/tkellen/memorybox/pkg/test"
 	"io"
 	"io/ioutil"

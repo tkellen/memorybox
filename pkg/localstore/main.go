@@ -27,13 +27,14 @@ func (s *Store) String() string {
 
 // Put writes the content of an io.Reader to local disk, naming the file with
 // a hash of its contents.
-func (s *Store) Put(src io.ReadCloser, hash string) error {
+func (s *Store) Put(source io.ReadCloser, hash string) error {
+	defer source.Close()
 	fullPath := path.Join(s.RootPath, hash)
 	file, err := os.Create(fullPath)
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	if _, err := io.Copy(file, src); err != nil {
+	if _, err := io.Copy(file, source); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
 	// Be absolutely sure the data has been persisted to disk.

@@ -2,7 +2,7 @@ package objectstore
 
 import (
 	"fmt"
-	"github.com/minio/minio-go"
+	"github.com/minio/minio-go/v6"
 	"io"
 	"strings"
 )
@@ -35,8 +35,9 @@ func New(client s3, bucket string) *Store {
 }
 
 // Put writes the content of an io.Reader to object storage.
-func (s *Store) Put(src io.ReadCloser, hash string) error {
-	if _, err := s.Client.PutObject(s.Bucket, hash, src, -1, minio.PutObjectOptions{}); err != nil {
+func (s *Store) Put(source io.ReadCloser, hash string) error {
+	defer source.Close()
+	if _, err := s.Client.PutObject(s.Bucket, hash, source, -1, minio.PutObjectOptions{}); err != nil {
 		return err
 	}
 	return nil

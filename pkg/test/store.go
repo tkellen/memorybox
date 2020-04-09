@@ -21,8 +21,9 @@ func (s *Store) String() string {
 
 // Put assigns the content of an io.Reader to a string keyed in-memory map using
 // the hash as a key.
-func (s *Store) Put(src io.ReadCloser, hash string) error {
-	data, err := ioutil.ReadAll(src)
+func (s *Store) Put(source io.ReadCloser, hash string) error {
+	defer source.Close()
+	data, err := ioutil.ReadAll(source)
 	if err != nil {
 		return err
 	}

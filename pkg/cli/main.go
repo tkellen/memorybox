@@ -18,11 +18,12 @@ type Command struct {
 	Logger      func(string, ...interface{})
 	Store       memorybox.Store
 	Index       memorybox.Index
-	// All network and disk IO operations are abstracted in the members below.
+	// All disk IO operations are abstracted in the members below.
 	// This separation should be maintained for ease of testing.
-	source  func(string, string) (io.ReadCloser, string, error)
-	sink    io.WriteCloser
 	cleanup func(string) error
+	read    func(string, io.ReadCloser, string) (io.ReadCloser, string, error)
+	stdin   io.ReadCloser
+	stdout  io.WriteCloser
 	tempDir string
 }
 
@@ -31,19 +32,12 @@ type Command struct {
 func New() *Command {
 	return &Command{
 		Logger:  func(format string, v ...interface{}) {},
-		source:  inputReader,
-		sink:    os.Stdout,
-		cleanup: wipeDir,
+		cleanup: os.RemoveAll,
+		read:    read,
+		stdout:  os.Stdout,
+		stdin:   os.Stdin,
 		tempDir: path.Join(os.TempDir(), "mb"),
 	}
-}
-
-// aggregateErrors does just what it sounds like.
-func aggregateErrorStrings(err error, errs []string) []string {
-	if err != nil {
-		return append(errs, err.Error())
-	}
-	return errs
 }
 
 // Dispatch runs commands as defined from the cli.
@@ -78,6 +72,7 @@ func (cmd *Command) Dispatch() error {
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "\n"))
 	}
+	cmd.stdout.Close()
 	return nil
 }
 
@@ -100,29 +95,41 @@ func (cmd *Command) get(request string) error {
 		return err
 	}
 	// TODO: support writing to disk
-	if _, err := io.Copy(cmd.sink, data); err != nil {
+	if _, err := io.Copy(cmd.stdout, data); err != nil {
 		return err
 	}
-	cmd.sink.Close()
 	return nil
 }
 
-// put persists a single input to a store if it is not already present.
+// Put persists a single input to a store if it is not already present.
 func (cmd *Command) put(input string) error {
-	// Get io.ReadCloser and content hash for defined input.
-	data, digest, err := cmd.source(input, cmd.tempDir)
-	if err != nil {
-		return err
+	var err error
+	var reader io.ReadCloser
+	var filepath, digest string
+	// Get an io.ReadCloser and the filename on disk for the supplied input. If
+	// the input isn't already on disk (putting data from stdin or a url), this
+	// method will tee the reader to a file in the temporary directory so it is
+	// persisted while we compute the hash.
+	if reader, filepath, err = cmd.read(input, cmd.stdin, cmd.tempDir); err != nil {
+		return fmt.Errorf("reading: %s", err)
 	}
-	defer data.Close()
+	// Compute a sha256 message digest for the content of our input.
+	if digest, err = hash(reader); err != nil {
+		return fmt.Errorf("hashing: %s", err)
+	}
 	// Check to see if the file already exists in the store and skip if it does.
 	if cmd.Store.Exists(digest) {
 		// Close our input since the Store will not be doing it for us.
 		cmd.Logger("%s -> %s (skipped, already present)", input, digest)
 		return nil
 	}
+	// We consumed the the reader computing our hash. Open the backing data
+	// file again.
+	if reader, filepath, err = cmd.read(filepath, cmd.stdin, cmd.tempDir); err != nil {
+		return err
+	}
 	// Stream file to backing store, using the hash of its content as the name.
-	if err = cmd.Store.Put(data, digest); err != nil {
+	if err = cmd.Store.Put(reader, digest); err != nil {
 		return fmt.Errorf("%w", err)
 	}
 	cmd.Logger("%s -> %s", input, digest)

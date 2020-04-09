@@ -1,12 +1,10 @@
-// These are integration tests that validate the low level methods that perform
-// disk/network IO.
 package cli
 
 import (
 	"bytes"
 	"github.com/tkellen/memorybox/pkg/test"
+	"io"
 	"io/ioutil"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -14,15 +12,34 @@ import (
 	"testing"
 )
 
-func TestInputReaderWithStdinSource(t *testing.T) {
-	t.Log("TODO: can this even be integration tested?")
-}
-
-func TestInputReaderWithHttpResource(t *testing.T) {
+func TestReadWithStdinInput(t *testing.T) {
 	tempDir := test.TempDir()
 	defer os.RemoveAll(tempDir)
 	expectedOutput := []byte("test")
-	expectedHash := "sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+	reader, filepath, err := read("-", test.GoodReadCloser(expectedOutput), tempDir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	actualOutput, readErr := ioutil.ReadAll(reader)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(expectedOutput, actualOutput) {
+		t.Fatalf("expected %s, got %s", expectedOutput, actualOutput)
+	}
+	tempFileBytes, tempFileErr := ioutil.ReadFile(filepath)
+	if tempFileErr != nil {
+		t.Fatalf("expected temp file: %s", tempFileErr)
+	}
+	if !bytes.Equal(expectedOutput, tempFileBytes) {
+		t.Fatalf("expected %s, got %s", expectedOutput, tempFileBytes)
+	}
+}
+
+func TestReadWithURLInput(t *testing.T) {
+	tempDir := test.TempDir()
+	defer os.RemoveAll(tempDir)
+	expectedOutput := []byte("test")
 	listen, listenErr := net.Listen("tcp", "127.0.0.1:0")
 	if listenErr != nil {
 		t.Fatal(listenErr)
@@ -31,7 +48,7 @@ func TestInputReaderWithHttpResource(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 		w.Write(expectedOutput)
 	}))
-	response, hash, err := inputReader("http://"+listen.Addr().String(), tempDir)
+	response, filepath, err := read("http://"+listen.Addr().String(), os.Stdout, tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,46 +59,67 @@ func TestInputReaderWithHttpResource(t *testing.T) {
 	if !bytes.Equal(expectedOutput, actualOutput) {
 		t.Fatalf("expected %s, got %s", expectedOutput, actualOutput)
 	}
-	if hash != expectedHash {
-		t.Fatalf("expected hash of %s, got %s", hash, expectedHash)
+	tempFileBytes, tempFileErr := ioutil.ReadFile(filepath)
+	if tempFileErr != nil {
+		t.Fatalf("expected temp file: %s", tempFileErr)
+	}
+	if !bytes.Equal(expectedOutput, tempFileBytes) {
+		t.Fatalf("expected %s, got %s", expectedOutput, tempFileBytes)
 	}
 }
 
-func TestInputReaderIoCopyFailure(t *testing.T) {
-	t.Log("TODO")
+func TestReadWithURLInputFailure(t *testing.T) {
+	_, _, err := read("http://invalidurl.ouch", os.Stdin, "/")
+	if err == nil {
+		t.Fatal("expected failure to fetch url")
+	}
+	if !strings.Contains(err.Error(), "no such host") {
+		t.Fatalf("expected host lookup failure, got %s", err)
+	}
 }
 
-func TestWipeDir(t *testing.T) {
-	dir := test.TempDir()
-	if err := os.Mkdir(dir, 0700); err != nil && !os.IsExist(err) {
-		log.Fatalf("creating temp directory :%s", err)
-	}
-	file, tempErr := ioutil.TempFile(dir, "*")
+func TestReadWithFilepathInput(t *testing.T) {
+	expectedOutput := []byte("test")
+	file, tempErr := ioutil.TempFile("", "*")
 	if tempErr != nil {
-		t.Fatalf("creating file in %s: %s", dir, tempErr)
+		t.Fatalf("setting up test: %s", tempErr)
 	}
-	file.Close()
-	err := wipeDir(dir)
+	filepath := file.Name()
+	defer os.RemoveAll(filepath)
+	_, writeErr := io.Copy(file, test.GoodReadCloser(expectedOutput))
+	if writeErr != nil {
+		t.Fatalf("setting up test: %s", writeErr)
+	}
+	response, resolvedFilepath, err := read(filepath, os.Stdin, "/")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(dir); !os.IsNotExist(err) {
-		t.Fatalf("expected %s to not exist", dir)
+	actualOutput, readErr := ioutil.ReadAll(response)
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if !bytes.Equal(expectedOutput, actualOutput) {
+		t.Fatalf("expected %s, got %s", expectedOutput, actualOutput)
+	}
+	if filepath != resolvedFilepath {
+		t.Fatalf("expected no temp file when input is already on disk")
 	}
 }
 
-func TestInputToFile(t *testing.T) {
-	t.Log("TODO")
-}
-
-func TestWriteToTemp(t *testing.T) {
+func TestTempTeeReader(t *testing.T) {
 	tempDir := test.TempDir()
 	defer os.RemoveAll(tempDir)
 	expected := []byte("test")
-	reader := test.GoodReadCloser(expected)
-	filepath, err := writeToTemp(reader, tempDir)
+	reader, filepath, err := tempTeeReader(test.GoodReadCloser(expected), tempDir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	readerActual, readAllErr := ioutil.ReadAll(reader)
+	if readAllErr != nil {
+		t.Fatalf("reading returned reader: %s", err)
+	}
+	if !bytes.Equal(expected, readerActual) {
+		t.Fatalf("expected reader to contain %s, got %s", expected, readerActual)
 	}
 	actual, readErr := ioutil.ReadFile(filepath)
 	if readErr != nil {
@@ -92,9 +130,9 @@ func TestWriteToTemp(t *testing.T) {
 	}
 }
 
-func TestWriteToTempCreateDirFailure(t *testing.T) {
+func TestTempTeeReaderCreateDirFailure(t *testing.T) {
 	data := test.GoodReadCloser([]byte("test"))
-	filepath, err := writeToTemp(data, "bad/nested/path")
+	_, filepath, err := tempTeeReader(data, "bad/nested/path")
 	if err == nil {
 		t.Fatal("expected failure to create directory")
 	}
@@ -103,28 +141,12 @@ func TestWriteToTempCreateDirFailure(t *testing.T) {
 	}
 }
 
-func TestWriteToTempCreateFileFailure(t *testing.T) {
+func TestTempTeeReaderCreateFileFailure(t *testing.T) {
 	data := test.GoodReadCloser([]byte("test"))
 	// so brittle. assumes you can't write here.
-	filepath, err := writeToTemp(data, "/")
+	_, filepath, err := tempTeeReader(data, "/")
 	if err == nil {
 		t.Fatal("expected failure to create temporary file")
-	}
-	if filepath != "" {
-		t.Fatalf("got %s, expected empty string", filepath)
-	}
-}
-
-func TestWriteToTempWriteFailure(t *testing.T) {
-	tempDir := test.TempDir()
-	defer os.RemoveAll(tempDir)
-	data := test.TimeoutReadCloser([]byte("test"))
-	filepath, err := writeToTemp(data, tempDir)
-	if err == nil {
-		t.Fatal("expected error failing to read input")
-	}
-	if !strings.Contains(err.Error(), "timeout") {
-		t.Fatalf("expected timout error: %s", err)
 	}
 	if filepath != "" {
 		t.Fatalf("got %s, expected empty string", filepath)
