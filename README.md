@@ -5,13 +5,7 @@
 On the shoulders of a lot of really cool projects I am teaching myself how to
 make a content addressable storage engine. At the time of this writing, I am
 aiming to keep the implementation to less than 500 readable lines of code with
-100% test coverage (comments / tests not included in line count).
-
-It will be possible to use local disk or any storage service that provides a
-s3-compatible API to ensure the bits that go in stand the test of time.
-
-I will probably implement some kind of adapter for all of the projects listed
-in the prior art section.
+100% test coverage (usage docs / comments / tests not included in line count).
 
 ## Goals
 Imagine a memory box you might find or make in real life. It likely contains
@@ -28,10 +22,14 @@ projects will be created to showcase the contents within.
 Clone this repo and run the following:
 ```sh
 go build
-echo "wat" | ./memorybox -d put local -
-./memorybox -d get local sha256-19ad3616216eea07d6f1adb48a774dd61c822a5ae800ef43b65766372ee4869b
-./memorybox -d put local https://scaleout.team/logo.svg
-./memorybox -d put local **/*.go
+./memorybox config set local type localdisk
+./memorybox config set local home ~/memorybox
+./memorybox config show
+echo "wat" | ./memorybox put -d local -
+echo "wat" | ./memorybox put -d local -
+./memorybox get -d local sha256-19ad3616216eea07d6f1adb48a774dd61c822a5ae800ef43b65766372ee4869b
+./memorybox put -d local https://scaleout.team/logo.svg
+./memorybox put -d local **/*.go
 ```
 
 ## Prior Art
@@ -41,7 +39,7 @@ echo "wat" | ./memorybox -d put local -
 * [Dat](https://dat.foundation/)
 
 ## Final Thoughts
-This project is essentially an over-engineered version of this:
+At some level, this project is essentially an over-engineered version of this:
 ```
 aws s3 cp file s3://bucket/sha256-$((sha256sum < file) | cut -d' ' -f1)
 ```

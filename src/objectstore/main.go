@@ -3,6 +3,7 @@ package objectstore
 import (
 	"fmt"
 	"github.com/minio/minio-go/v6"
+	"github.com/minio/minio-go/v6/pkg/credentials"
 	"io"
 	"strings"
 )
@@ -27,11 +28,20 @@ func (s *Store) String() string {
 }
 
 // New returns a reference to a Store instance.
-func New(client s3, bucket string) *Store {
+func New(bucket string, client s3) *Store {
 	return &Store{
 		Bucket: strings.TrimPrefix(bucket, "s3://"),
 		Client: client,
 	}
+}
+
+// NewFromTarget instantiates a Store using configuration values that were
+// likely sourced from a configuration file target.
+// TODO: properly support aws with more settings
+func NewFromTarget(config map[string]string) *Store {
+	creds := credentials.NewEnvAWS()
+	client, _ := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
+	return New(config["home"], client)
 }
 
 // Put writes the content of an io.Reader to object storage.

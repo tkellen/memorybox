@@ -1,7 +1,8 @@
-package localstore
+package localdiskstore
 
 import (
 	"fmt"
+	"github.com/mitchellh/go-homedir"
 	"io"
 	"os"
 	"path"
@@ -13,21 +14,28 @@ type Store struct {
 }
 
 // New returns a reference to a Store instance.
-func New(rootPath string) (*Store, error) {
-	if err := os.MkdirAll(rootPath, 0755); err != nil {
-		return nil, fmt.Errorf("could not create %s: %w", rootPath, err)
-	}
-	return &Store{RootPath: rootPath}, nil
+func New(rootPath string) *Store {
+	expanded, _ := homedir.Expand(rootPath)
+	return &Store{RootPath: expanded}
+}
+
+// NewFromTarget instantiates a Store using configuration values that were
+// likely sourced from a configuration file target.
+func NewFromTarget(config map[string]string) *Store {
+	return New(config["home"])
 }
 
 // String returns a human friendly representation of the Store.
 func (s *Store) String() string {
-	return fmt.Sprintf("LocalStore: %s", s.RootPath)
+	return fmt.Sprintf("LocalDiskStore: %s", s.RootPath)
 }
 
 // Put writes the content of an io.Reader to local disk, naming the file with
 // a hash of its contents.
 func (s *Store) Put(source io.ReadCloser, hash string) error {
+	if err := os.MkdirAll(s.RootPath, 0755); err != nil {
+		return fmt.Errorf("could not create %s: %w", s.RootPath, err)
+	}
 	defer source.Close()
 	fullPath := path.Join(s.RootPath, hash)
 	file, err := os.Create(fullPath)

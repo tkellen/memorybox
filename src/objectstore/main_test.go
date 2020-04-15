@@ -15,10 +15,10 @@
 package objectstore
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
 	"github.com/minio/minio-go/v6"
-	"github.com/tkellen/memorybox/pkg/test"
 	"io"
 	"io/ioutil"
 	"testing"
@@ -40,9 +40,23 @@ func (s3 *s3mock) StatObject(bucket string, key string, opts minio.StatObjectOpt
 	return s3.statObject(bucket, key, opts)
 }
 
-func TestString(t *testing.T) {
+func ReadCloser(input []byte) io.ReadCloser {
+	return ioutil.NopCloser(bytes.NewReader(input))
+}
+
+func TestNewFromTarget(t *testing.T) {
+	expected := "bucket-name"
+	actual := NewFromTarget(map[string]string{
+		"home": expected,
+	})
+	if expected != actual.Bucket {
+		t.Fatalf("expected bucket of %s, got %s", expected, actual.Bucket)
+	}
+}
+
+func TestStore_String(t *testing.T) {
 	bucket := "test"
-	store := New(&s3mock{}, "test")
+	store := New("test", nil)
 	actual := store.String()
 	expected := fmt.Sprintf("ObjectStore: %s", bucket)
 	if expected != actual {
@@ -50,12 +64,12 @@ func TestString(t *testing.T) {
 	}
 }
 
-func TestPutSuccess(t *testing.T) {
+func TestStore_Put_Success(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
-	expectedReader := test.GoodReadCloser([]byte("test"))
+	expectedReader := ReadCloser([]byte("test"))
 	expectedFilename := "test"
-	New(&s3mock{
+	New(expectedBucket, &s3mock{
 		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -70,19 +84,19 @@ func TestPutSuccess(t *testing.T) {
 			bytes, _ := ioutil.ReadAll(expectedReader)
 			return int64(len(bytes)), nil
 		},
-	}, expectedBucket).Put(expectedReader, expectedFilename)
+	}).Put(expectedReader, expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
 }
 
-func TestPutFailure(t *testing.T) {
+func TestStore_Put_Failure(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
-	expectedReader := test.GoodReadCloser([]byte("test"))
+	expectedReader := ReadCloser([]byte("test"))
 	expectedFilename := "test"
 	expectedError := errors.New("failed")
-	err := New(&s3mock{
+	err := New(expectedBucket, &s3mock{
 		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -96,7 +110,7 @@ func TestPutFailure(t *testing.T) {
 			}
 			return 0, expectedError
 		},
-	}, expectedBucket).Put(expectedReader, expectedFilename)
+	}).Put(expectedReader, expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -105,11 +119,11 @@ func TestPutFailure(t *testing.T) {
 	}
 }
 
-func TestGet(t *testing.T) {
+func TestStore_Get(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedFilename := "test"
-	New(&s3mock{
+	New(expectedBucket, &s3mock{
 		getObject: func(bucket string, key string, options minio.GetObjectOptions) (*minio.Object, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -120,17 +134,17 @@ func TestGet(t *testing.T) {
 			}
 			return &minio.Object{}, nil
 		},
-	}, expectedBucket).Get(expectedFilename)
+	}).Get(expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
 }
 
-func TestExists(t *testing.T) {
+func TestStore_Exists(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedFilename := "test"
-	New(&s3mock{
+	New(expectedBucket, &s3mock{
 		statObject: func(bucket string, key string, options minio.StatObjectOptions) (minio.ObjectInfo, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -141,7 +155,7 @@ func TestExists(t *testing.T) {
 			}
 			return minio.ObjectInfo{}, nil
 		},
-	}, expectedBucket).Exists(expectedFilename)
+	}).Exists(expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
