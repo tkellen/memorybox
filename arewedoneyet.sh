@@ -2,16 +2,23 @@
 set -euo pipefail
 SCRIPT_PATH="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 
-MAX_LINES=500
-LINE_COUNT=$(
-  find ${SCRIPT_PATH} -name "*.go"         `# find all go files in the repo`\
-    | grep -v test                         `# omit files w/ test in name` \
-    | grep -v hack                         `# omit files w/ hack in name` \
-    | xargs cat                            `# read every file left` \
-    | grep -v //                           `# remove lines that are comments` \
-    | grep "\S"                            `# remove empty lines` \
-    | sed '/const usage/,/`/d'             `# remove usage string` \
-    | wc -l                                `# count the lines that remain`
-)
+function lineCount {
+  local package=${1}
+  go list -f '{{.Dir}}/{{join .GoFiles (printf "%s%s/" "\n" .Dir)}}' ${package} \
+    | xargs cat                 `# read each source file` \
+    | grep -v //                `# remove lines that are comments` \
+    | grep "\S"                 `# remove empty lines` \
+    | sed '/const usage/,/`/d'  `# remove usage string` \
+    | wc -l                     `# count the lines that remain`
+}
+packageName=$(dirname $(go list -f '{{.ImportPath}}'))
+maxLines=500
+usedLines=0
 
-echo $((${MAX_LINES} - ${LINE_COUNT})) lines remain before you must be done.
+while read package; do
+    packageLineCount=$(lineCount ${package})
+    printf "%s\t%s\n" ${packageLineCount} ${package#*${packageName}}
+    usedLines=$((usedLines+packageLineCount))
+done <<<$(go list ./...)
+
+printf "%s\n\n%s lines remain before you must be done.\n" ${usedLines} $((${maxLines} - ${usedLines}))
