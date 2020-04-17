@@ -1,5 +1,5 @@
 // Sure would be nice if a VFS implementation existed for golang.
-package cli
+package simplecli
 
 import (
 	"errors"
@@ -17,25 +17,27 @@ type testRunner struct {
 	tempPathLocation   string
 	configPath         func() string
 	tempPath           func() string
-	configure          func([]string, io.Reader) error
+	startup            func([]string, io.Reader) error
 	saveConfig         func(io.Writer) error
 	dispatch           func() error
 }
 
-func (m testRunner) ConfigPath() string {
-	return m.configPath()
+func (run testRunner) ConfigPath() string {
+	return run.configPath()
 }
-func (m testRunner) TempPath() string {
-	return m.tempPath()
+func (run testRunner) TempPath() string {
+	return run.tempPath()
 }
-func (m testRunner) Configure(args []string, reader io.Reader) error {
-	return m.configure(args, reader)
+func (run testRunner) Configure(args []string, reader io.Reader) error {
+	return run.startup(args, reader)
 }
-func (m testRunner) SaveConfig(writer io.Writer) error {
-	return m.saveConfig(writer)
+func (run testRunner) Shutdown(writer io.Writer) error {
+	return run.saveConfig(writer)
 }
-func (m testRunner) Dispatch() error {
-	return m.dispatch()
+func (run testRunner) Dispatch() func() error {
+	return func() error {
+		return nil
+	}
 }
 
 func newTestRunner() *testRunner {
@@ -48,7 +50,7 @@ func newTestRunner() *testRunner {
 		tempPath: func() string {
 			return tempPath
 		},
-		configure: func(args []string, reader io.Reader) error {
+		startup: func(args []string, reader io.Reader) error {
 			_, err := ioutil.ReadAll(reader)
 			return err
 		},
@@ -64,92 +66,86 @@ func newTestRunner() *testRunner {
 
 func TestRun(t *testing.T) {
 	table := map[string]struct {
-		runner               *testRunner
+		run                  *testRunner
 		setup                func(*testRunner) error
 		configFileContent    []byte
 		configFileCreateFail bool
 		tempPathCreateFail   bool
-		args                 []string
 		expectedErr          error
 	}{
 		"success": {
-			runner: newTestRunner(),
+			run: newTestRunner(),
 			setup: func(*testRunner) error {
 				return nil
 			},
 			configFileContent: []byte("test"),
-			args:              []string{"test", "thing"},
 			expectedErr:       nil,
 		},
 		"failure on creating config": {
-			runner:            newTestRunner(),
+			run:               newTestRunner(),
 			configFileContent: []byte("test"),
-			setup: func(runner *testRunner) error {
+			setup: func(run *testRunner) error {
 				// prevent configuration file from being created by putting a
 				// directory in its place
-				return os.MkdirAll(runner.configPath(), 0755)
+				return os.MkdirAll(run.configPath(), 0755)
 			},
-			args:        []string{"test", "thing"},
 			expectedErr: errors.New("is a directory"),
 			// ^ figure out how to use errors.Is (this will never happen)
 		},
 		"failure on creating config directory": {
-			runner:            newTestRunner(),
+			run:               newTestRunner(),
 			configFileContent: []byte("test"),
-			setup: func(runner *testRunner) error {
+			setup: func(run *testRunner) error {
 				// prevent configuration directory from being created by putting
 				// a file in is place.
-				file, err := os.Create(path.Dir(runner.configPath()))
+				file, err := os.Create(path.Dir(run.configPath()))
 				file.Close()
 				return err
 			},
-			args:        []string{"test", "thing"},
 			expectedErr: errors.New("mkdir"),
 			// ^ figure out how to use errors.Is (this will never happen)
 		},
 		"failure on creating temp directory": {
-			runner: newTestRunner(),
-			setup: func(runner *testRunner) error {
+			run: newTestRunner(),
+			setup: func(run *testRunner) error {
 				// prevent temporary directory from being created by putting a
 				// file in its place
-				if err := os.MkdirAll(path.Dir(runner.tempPath()), 0755); err != nil {
+				if err := os.MkdirAll(path.Dir(run.tempPath()), 0755); err != nil {
 					return err
 				}
-				file, err := os.Create(runner.tempPath())
+				file, err := os.Create(run.tempPath())
 				file.Close()
 				return err
 			},
-			args:        []string{"test", "thing"},
 			expectedErr: errors.New("mkdir"),
 			// ^ figure out how to use errors.Is (this will never happen)
 		},
-		"failure on running configure": {
-			runner: newTestRunner(),
-			setup: func(runner *testRunner) error {
-				// force configure call to fail
-				runner.configure = func(i []string, reader io.Reader) error {
+		"failure on running startup": {
+			run: newTestRunner(),
+			setup: func(run *testRunner) error {
+				// force startup call to fail
+				run.startup = func(i []string, reader io.Reader) error {
 					return errors.New("bad time")
 				}
 				return nil
 			},
-			args:        []string{"test", "thing"},
 			expectedErr: errors.New("bad time"),
 			// ^ figure out how to use errors.Is (this will never happen)
 		},
-		// TODO: test what is passed into runner.Configure and runner.SaveConfig
+		// TODO: test what is passed into run.Configure and run.Shutdown
 
 	}
 	for name, test := range table {
 		t.Run(name, func(t *testing.T) {
 			defer func() {
-				os.RemoveAll(test.runner.tempPath())
-				os.RemoveAll(path.Dir(test.runner.configPath()))
+				os.RemoveAll(test.run.tempPath())
+				os.RemoveAll(path.Dir(test.run.configPath()))
 			}()
-			setupErr := test.setup(test.runner)
+			setupErr := test.setup(test.run)
 			if setupErr != nil {
 				t.Fatalf("setting up test: %s", setupErr)
 			}
-			err := Run(test.runner, test.args)
+			err := Run(test.run, []string{"one", "two"})
 			if err != nil && test.expectedErr == nil {
 				t.Fatalf("did not expect error: %s", err)
 			}

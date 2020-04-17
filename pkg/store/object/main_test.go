@@ -12,7 +12,7 @@
 //
 // Honestly, the value of spending time writing these tests is, by analogy,
 // equivalent to knitting a hat vs buying one. Whatever. Here we go.
-package objectstore
+package object
 
 import (
 	"bytes"
@@ -25,9 +25,10 @@ import (
 )
 
 type s3mock struct {
-	putObject  func(string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
-	getObject  func(string, string, minio.GetObjectOptions) (*minio.Object, error)
-	statObject func(string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
+	putObject   func(string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
+	getObject   func(string, string, minio.GetObjectOptions) (*minio.Object, error)
+	listObjects func(string, string, bool, <-chan struct{}) <-chan minio.ObjectInfo
+	statObject  func(string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
 }
 
 func (s3 *s3mock) PutObject(bucket string, key string, reader io.Reader, size int64, opts minio.PutObjectOptions) (int64, error) {
@@ -39,14 +40,13 @@ func (s3 *s3mock) GetObject(bucket string, key string, opts minio.GetObjectOptio
 func (s3 *s3mock) StatObject(bucket string, key string, opts minio.StatObjectOptions) (minio.ObjectInfo, error) {
 	return s3.statObject(bucket, key, opts)
 }
-
-func ReadCloser(input []byte) io.ReadCloser {
-	return ioutil.NopCloser(bytes.NewReader(input))
+func (s3 *s3mock) ListObjects(bucket string, prefix string, recursive bool, doneCh <-chan struct{}) <-chan minio.ObjectInfo {
+	return s3.listObjects(bucket, prefix, recursive, doneCh)
 }
 
-func TestNewFromTarget(t *testing.T) {
+func TestNewFromConfig(t *testing.T) {
 	expected := "bucket-name"
-	actual := NewFromTarget(map[string]string{
+	actual := NewFromConfig(map[string]string{
 		"home": expected,
 	})
 	if expected != actual.Bucket {
@@ -67,7 +67,7 @@ func TestStore_String(t *testing.T) {
 func TestStore_Put_Success(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
-	expectedReader := ReadCloser([]byte("test"))
+	expectedReader := bytes.NewReader([]byte("test"))
 	expectedFilename := "test"
 	New(expectedBucket, &s3mock{
 		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
@@ -79,7 +79,7 @@ func TestStore_Put_Success(t *testing.T) {
 				t.Fatalf("expected %s as key, got %s", expectedFilename, key)
 			}
 			if expectedReader != reader {
-				t.Fatalf("expected %s as reader, got %s", expectedReader, reader)
+				t.Fatalf("expected %v as reader, got %v", expectedReader, reader)
 			}
 			bytes, _ := ioutil.ReadAll(expectedReader)
 			return int64(len(bytes)), nil
@@ -93,7 +93,7 @@ func TestStore_Put_Success(t *testing.T) {
 func TestStore_Put_Failure(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
-	expectedReader := ReadCloser([]byte("test"))
+	expectedReader := bytes.NewReader([]byte("test"))
 	expectedFilename := "test"
 	expectedError := errors.New("failed")
 	err := New(expectedBucket, &s3mock{
@@ -106,7 +106,7 @@ func TestStore_Put_Failure(t *testing.T) {
 				t.Fatalf("expected %s as key, got %s", expectedFilename, key)
 			}
 			if expectedReader != reader {
-				t.Fatalf("expected %s as reader, got %s", expectedReader, reader)
+				t.Fatalf("expected %v as reader, got %v", expectedReader, reader)
 			}
 			return 0, expectedError
 		},

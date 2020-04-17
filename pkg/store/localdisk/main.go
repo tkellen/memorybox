@@ -1,4 +1,4 @@
-package localdiskstore
+package localdisk
 
 import (
 	"fmt"
@@ -6,6 +6,8 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 )
 
 // Store implements memorybox.Store backed by local disk.
@@ -19,9 +21,9 @@ func New(rootPath string) *Store {
 	return &Store{RootPath: expanded}
 }
 
-// NewFromTarget instantiates a Store using configuration values that were
+// NewFromConfig instantiates a Store using configuration values that were
 // likely sourced from a configuration file target.
-func NewFromTarget(config map[string]string) *Store {
+func NewFromConfig(config map[string]string) *Store {
 	return New(config["home"])
 }
 
@@ -32,11 +34,10 @@ func (s *Store) String() string {
 
 // Put writes the content of an io.Reader to local disk, naming the file with
 // a hash of its contents.
-func (s *Store) Put(source io.ReadCloser, hash string) error {
+func (s *Store) Put(source io.Reader, hash string) error {
 	if err := os.MkdirAll(s.RootPath, 0755); err != nil {
 		return fmt.Errorf("could not create %s: %w", s.RootPath, err)
 	}
-	defer source.Close()
 	fullPath := path.Join(s.RootPath, hash)
 	file, err := os.Create(fullPath)
 	if err != nil {
@@ -49,9 +50,22 @@ func (s *Store) Put(source io.ReadCloser, hash string) error {
 	return file.Sync()
 }
 
-// Get finds an object in storage by name and returns an io.Reader for it.
+// Get finds an object in storage by name and returns an io.ReadCloser for it.
 func (s *Store) Get(request string) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.RootPath, request))
+}
+
+// Search finds matching files in storage by prefix.
+func (s *Store) Search(search string) ([]string, error) {
+	var matches []string
+	results, err := filepath.Glob(path.Join(s.RootPath, search) + "*")
+	if err != nil {
+		return nil, fmt.Errorf("local store search: %s", err)
+	}
+	for _, entry := range results {
+		matches = append(matches, strings.TrimPrefix(entry, s.RootPath))
+	}
+	return matches, nil
 }
 
 // Exists determines if a given file exists in the local store already.

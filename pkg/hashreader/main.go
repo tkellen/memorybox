@@ -32,9 +32,10 @@ func newSystem() *system {
 // this package requires.
 var realIO *system = newSystem()
 
-// Read takes an input string from any supported source (local file, url or
-// stdin) and returns an io.readCloser for it along with a hash of its contents.
-func Read(input string, tempDir string) (io.ReadCloser, string, error) {
+// HashReader takes an input string from any supported source (local file, url
+// or stdin) and returns an io.readCloser for it along with a hash of its
+// contents.
+func HashReader(input string, tempDir string) (io.ReadCloser, string, error) {
 	return realIO.read(input, tempDir)
 }
 
@@ -121,11 +122,10 @@ func inputIsURL(input string) bool {
 }
 
 // hash computes a sha256 message digest for a provided io.readCloser.
-func hash(source io.ReadCloser) (string, error) {
-	defer source.Close()
+func hash(source io.Reader) (string, error) {
 	hash := sha256.New()
 	if _, err := io.Copy(hash, source); err != nil {
 		return "", err
 	}
-	return "sha256-" + hex.EncodeToString(hash.Sum(nil)), nil
+	return hex.EncodeToString(hash.Sum(nil))+"-sha256", nil
 }

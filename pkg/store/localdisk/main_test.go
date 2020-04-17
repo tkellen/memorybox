@@ -2,12 +2,11 @@
 // handling this store layers over the golang standard libraries for os-agnostic
 // path resolution and disk io. Mocking out the filesystem for this (as seen in
 // the hashreader package) seemed like overkill.
-package localdiskstore
+package localdisk
 
 import (
 	"bytes"
 	"fmt"
-	"io"
 	"io/ioutil"
 	"os"
 	"path"
@@ -15,17 +14,9 @@ import (
 	"testing/iotest"
 )
 
-func TimeoutReadCloser(input []byte) io.ReadCloser {
-	return ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader(input)))
-}
-
-func ReadCloser(input []byte) io.ReadCloser {
-	return ioutil.NopCloser(bytes.NewReader(input))
-}
-
-func TestNewFromTarget(t *testing.T) {
+func TestNewFromConfig(t *testing.T) {
 	expected := "test"
-	actual := NewFromTarget(map[string]string{
+	actual := NewFromConfig(map[string]string{
 		"home": expected,
 	})
 	if expected != actual.RootPath {
@@ -51,7 +42,7 @@ func TestStore_Put(t *testing.T) {
 	store := New(tempDir)
 	filename := "test"
 	expected := []byte(filename)
-	putErr := store.Put(ReadCloser(expected), filename)
+	putErr := store.Put(bytes.NewReader(expected), filename)
 	if putErr != nil {
 		t.Fatal(putErr)
 	}
@@ -73,7 +64,7 @@ func TestStore_Put_CannotCreateHome(t *testing.T) {
 	store := New(file.Name())
 	filename := "test"
 	expected := []byte(filename)
-	putErr := store.Put(ReadCloser(expected), filename)
+	putErr := store.Put(bytes.NewReader(expected), filename)
 	if putErr == nil {
 		t.Fatal("expected error creating home directory")
 	}
@@ -86,7 +77,7 @@ func TestStore_Put_BadReader(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	store := New(tempDir)
-	putErr := store.Put(TimeoutReadCloser([]byte("test")), "test")
+	putErr := store.Put(iotest.TimeoutReader(bytes.NewReader([]byte("test"))), "test")
 	if putErr == nil {
 		t.Fatal("expected put error")
 	}
@@ -99,7 +90,7 @@ func TestStore_Put_CannotCreateFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	store := New(tempDir)
-	putErr := store.Put(TimeoutReadCloser([]byte("test")), path.Join("test", "file"))
+	putErr := store.Put(iotest.TimeoutReader(bytes.NewReader([]byte("test"))), path.Join("test", "file"))
 	if putErr == nil {
 		t.Fatal("expected put error")
 	}

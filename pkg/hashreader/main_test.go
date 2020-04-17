@@ -26,7 +26,7 @@ func TestReadStdinInputSuccess(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	expectedBytes := []byte("test")
-	expectedHash := "sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+	expectedHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
 	sys := newSystem()
 	sys.Stdin = ioutil.NopCloser(bytes.NewReader(expectedBytes))
 	reader, actualHash, err := sys.read("-", tempDir)
@@ -53,7 +53,7 @@ func TestReadURLInputSuccess(t *testing.T) {
 	defer os.RemoveAll(tempDir)
 	input := "http://totally.legit/url.html"
 	expectedBytes := []byte("test")
-	expectedHash := "sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+	expectedHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
 	getCalled := false
 	sys := newSystem()
 	// Mock every http request to contain our expected bytes.
@@ -122,7 +122,7 @@ func TestReadWithFilepathSuccess(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	expectedBytes := []byte("test")
-	expectedHash := "sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
+	expectedHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
 	// create the file we are about to read
 	inputFile, tempFileErr := ioutil.TempFile(tempDir, "*")
 	if tempFileErr != nil {
@@ -133,7 +133,7 @@ func TestReadWithFilepathSuccess(t *testing.T) {
 	if writeErr != nil {
 		t.Fatalf("test setup: %s", writeErr)
 	}
-	reader, actualHash, err := Read(inputFile.Name(), tempDir)
+	reader, actualHash, err := HashReader(inputFile.Name(), tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -151,7 +151,7 @@ func TestReadWithFilepathSuccess(t *testing.T) {
 
 func TestReadWithFilepathInputFailure(t *testing.T) {
 	input := "path/to/nothing"
-	_, _, err := Read(input, "")
+	_, _, err := HashReader(input, "")
 	if err == nil {
 		t.Fatalf("expected error on file not found")
 	}
@@ -189,7 +189,7 @@ func TestReadWithHashFailure(t *testing.T) {
 
 func TestReadWithTempFileCreationFailure(t *testing.T) {
 	input := "-"
-	_, _, err := Read(input, "/tmp/nope/bad")
+	_, _, err := HashReader(input, "/tmp/nope/bad")
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -199,7 +199,7 @@ func TestReadWithTempFileCreationFailure(t *testing.T) {
 }
 
 // These unit tests are covered by the above integration tests. Worthless?
-// The eyes in the beholder, I guess.
+// Beauty lies in the eye of the beholder, I guess.
 func TestInputOnStdin(t *testing.T) {
 	if inputIsStdin("whatever") {
 		t.Fatal("expected false")
@@ -222,15 +222,15 @@ func TestInputIsURL(t *testing.T) {
 }
 
 func TestHash(t *testing.T) {
-	expected := "sha256-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08"
-	actual, goodErr := hash(ioutil.NopCloser(bytes.NewReader([]byte("test"))))
+	expected := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
+	actual, goodErr := hash(bytes.NewReader([]byte("test")))
 	if goodErr != nil {
 		t.Fatal(goodErr)
 	}
 	if expected != actual {
 		t.Fatalf("expected %s, got %s", expected, actual)
 	}
-	result, err := hash(ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader([]byte("test")))))
+	result, err := hash(iotest.TimeoutReader(bytes.NewReader([]byte("test"))))
 	if result != "" {
 		t.Fatalf("expected empty result on bad reader, got %s", result)
 	}

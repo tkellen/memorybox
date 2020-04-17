@@ -4,7 +4,7 @@
 # Introduction
 On the shoulders of a lot of really cool projects I am teaching myself how to
 make a content addressable storage engine. At the time of this writing, I am
-aiming to keep the implementation to less than 500 readable lines of code with
+aiming to keep the implementation to less than 1000 readable lines of code with
 100% test coverage (usage docs / comments / tests not included in line count).
 
 ## Goals

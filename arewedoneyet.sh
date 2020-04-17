@@ -12,7 +12,7 @@ function lineCount {
     | wc -l                     `# count the lines that remain`
 }
 packageName=$(dirname $(go list -f '{{.ImportPath}}'))
-maxLines=500
+maxLines=1000
 usedLines=0
 
 while read package; do
