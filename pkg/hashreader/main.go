@@ -35,7 +35,7 @@ var realIO *system = newSystem()
 // HashReader takes an input string from any supported source (local file, url
 // or stdin) and returns an io.readCloser for it along with a hash of its
 // contents.
-func HashReader(input string, tempDir string) (io.ReadCloser, string, error) {
+func HashReader(input string, tempDir string) (io.ReadCloser, int64, string, error) {
 	return realIO.read(input, tempDir)
 }
 
@@ -43,7 +43,7 @@ func HashReader(input string, tempDir string) (io.ReadCloser, string, error) {
 // that do not originate on local disk are stored in a temporary file to allow
 // them to be read multiple times (once for hashing and once for consumers who
 // wish to do something with both the content and the hash).
-func (sys *system) read(input string, tempDir string) (io.ReadCloser, string, error) {
+func (sys *system) read(input string, tempDir string) (io.ReadCloser, int64, string, error) {
 	var reader io.ReadCloser
 	var err error
 	// If the input string was determined to represent stdin, create a temporary
@@ -79,12 +79,12 @@ func (sys *system) read(input string, tempDir string) (io.ReadCloser, string, er
 	// By now we should have a reader and no errors. If any of the previous
 	// attempts at getting a reader caused an error, bail out now.
 	if err != nil {
-		return nil, "", err
+		return nil, 0, "", err
 	}
 	// Hash the contents of the reader we have obtained.
-	digest, digestErr := hash(reader)
+	digest, size, digestErr := hash(reader)
 	if digestErr != nil {
-		return nil, "", fmt.Errorf("hashing: %s", digestErr)
+		return nil, 0, "", fmt.Errorf("hashing: %s", digestErr)
 	}
 	reader.Close()
 	// Now that we have hashed the data our input points to, get another reader
@@ -93,7 +93,7 @@ func (sys *system) read(input string, tempDir string) (io.ReadCloser, string, er
 	// this is opening a temporary file that we expect to clean up when the
 	// application finishes execution.
 	reader, err = sys.Open(input)
-	return reader, digest, err
+	return reader, size, digest, err
 }
 
 // teeFileReader returns an io.readCloser that, when read, will populate a temp
@@ -122,10 +122,11 @@ func inputIsURL(input string) bool {
 }
 
 // hash computes a sha256 message digest for a provided io.readCloser.
-func hash(source io.Reader) (string, error) {
+func hash(source io.Reader) (string, int64, error) {
 	hash := sha256.New()
-	if _, err := io.Copy(hash, source); err != nil {
-		return "", err
+	size, err := io.Copy(hash, source)
+	if err != nil {
+		return "", 0, err
 	}
-	return hex.EncodeToString(hash.Sum(nil))+"-sha256", nil
+	return hex.EncodeToString(hash.Sum(nil)) + "-sha256", size, nil
 }

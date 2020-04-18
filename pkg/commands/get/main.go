@@ -24,7 +24,7 @@ func (Command) Main(store store.Store, hash string, sink io.Writer) error {
 		return fmt.Errorf("get: %s", searchErr)
 	}
 	if len(matches) != 1 {
-		return fmt.Errorf("%d files matched", len(matches))
+		return fmt.Errorf("%d objects matched", len(matches))
 	}
 	data, err := store.Get(matches[0])
 	if err != nil {

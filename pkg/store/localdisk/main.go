@@ -7,10 +7,9 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"strings"
 )
 
-// Store implements memorybox.Store backed by local disk.
+// Store implements store.Store backed by local disk.
 type Store struct {
 	RootPath string
 }
@@ -63,12 +62,12 @@ func (s *Store) Search(search string) ([]string, error) {
 		return nil, fmt.Errorf("local store search: %s", err)
 	}
 	for _, entry := range results {
-		matches = append(matches, strings.TrimPrefix(entry, s.RootPath))
+		matches = append(matches, path.Base(entry))
 	}
 	return matches, nil
 }
 
-// Exists determines if a given file exists in the local store already.
+// Exists determines if an object exists in the local store already.
 func (s *Store) Exists(search string) bool {
 	_, err := os.Stat(path.Join(s.RootPath, search))
 	return err == nil

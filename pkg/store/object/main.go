@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Store implements memorybox.Store backed by s3-compatible object storage.
+// Store implements store.Store backed by s3-compatible object storage.
 type Store struct {
 	Bucket string
 	Client s3

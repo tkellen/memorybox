@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"github.com/korovkin/limiter"
 	"github.com/tkellen/memorybox/pkg/hashreader"
+	"github.com/tkellen/memorybox/pkg/metadata"
 	"github.com/tkellen/memorybox/pkg/store"
 	"strings"
+	"time"
 )
 
 // Logger is just what you think it is.
@@ -26,7 +28,7 @@ type Command struct{}
 // their contents as the identifier of the input.
 func (Command) Main(store store.Store, input []string, concurrency int, logger Logger, tempPath string) error {
 	return limitRunner(func(request string) error {
-		reader, digest, err := hashreader.HashReader(request, tempPath)
+		reader, size, digest, err := hashreader.HashReader(request, tempPath)
 		defer reader.Close()
 		if err != nil {
 			return err
@@ -36,6 +38,18 @@ func (Command) Main(store store.Store, input []string, concurrency int, logger L
 			return nil
 		}
 		logger("%s -> %s", request, digest)
+		metaReader, metaReaderErr := (&metadata.Metadata{
+			"source":     request,
+			"size":       size,
+			"uploadDate": time.Now(),
+		}).ToReader()
+		if metaReaderErr != nil {
+			return metaReaderErr
+		}
+		metaErr := store.Put(metaReader, "meta-"+digest)
+		if metaErr != nil {
+			return metaErr
+		}
 		return store.Put(reader, digest)
 	}, input, concurrency)
 }

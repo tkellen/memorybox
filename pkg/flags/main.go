@@ -10,8 +10,8 @@ import (
 const usageTemplate = `Usage:
   %[1]s [options] <target> get <hash>
   %[1]s [options] <target> put <input>...
-  %[1]s <target> meta <hash> [delete [<key>] | set <key> <value>]
-  %[1]s config [delete <target> [<key>] | set <target> <key> <value>]
+  %[1]s <target> meta <hash> [set <key> <value> | delete [<key>]]
+  %[1]s config [set <target> <key> <value> | delete <target> [<key>]]
 
 Options:
   -c --concurrency=<num>   Max number of concurrent operations [default: 10].
@@ -25,11 +25,13 @@ Examples
   %[1]s config set local extra value
   %[1]s config
   %[1]s config delete local extra
-  %[1]s config set bucket type s3
-  %[1]s config set bucket home s3://bucket-name
-  %[1]s config delete bucket
-  printf "data" | %[1]s local put -
-  %[1]s local put **/*.go
+  %[1]s -d local put **/*.go
+  %[1]s -d local put https://scaleout.team/logo.svg  
+  printf "data" | %[1]s -d local put -
+  %[1]s -d local get 3a
+  %[1]s -d local meta 3a
+  %[1]s -d local meta 3a set newKey someValue
+  %[1]s -d local meta 3a delete newKey
 `
 
 // Flags provides a typed interface to all supported command line arguments.
