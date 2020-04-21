@@ -2,11 +2,12 @@
 // handling this store layers over the golang standard libraries for os-agnostic
 // path resolution and disk io. Mocking out the filesystem for this (as seen in
 // the hashreader package) seemed like overkill.
-package localdisk
+package localdisk_test
 
 import (
 	"bytes"
 	"fmt"
+	. "github.com/tkellen/memorybox/pkg/store/localdisk"
 	"io/ioutil"
 	"os"
 	"path"

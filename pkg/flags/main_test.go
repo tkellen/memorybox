@@ -1,8 +1,9 @@
-package flags
+package flags_test
 
 import (
 	"errors"
 	"github.com/google/go-cmp/cmp"
+	. "github.com/tkellen/memorybox/pkg/flags"
 	"strings"
 	"testing"
 )

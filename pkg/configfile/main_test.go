@@ -1,9 +1,10 @@
-package configfile
+package configfile_test
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
+	. "github.com/tkellen/memorybox/pkg/configfile"
 	"gopkg.in/yaml.v2"
 	"io"
 	"io/ioutil"

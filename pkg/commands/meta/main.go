@@ -68,5 +68,5 @@ func findMeta(store store.Store, search string) (*file.File, error) {
 	if getErr != nil {
 		return nil, getErr
 	}
-	return file.New(reader)
+	return file.New().Load(reader)
 }

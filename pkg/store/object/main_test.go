@@ -12,13 +12,14 @@
 //
 // Honestly, the value of spending time writing these tests is, by analogy,
 // equivalent to knitting a hat vs buying one. Whatever. Here we go.
-package object
+package object_test
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	"github.com/minio/minio-go/v6"
+	. "github.com/tkellen/memorybox/pkg/store/object"
 	"io"
 	"io/ioutil"
 	"testing"

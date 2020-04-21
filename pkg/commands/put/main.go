@@ -63,7 +63,7 @@ func (c Command) Main(store store.Store, requests []string) error {
 			item := item // https://golang.org/doc/faq#closures_and_goroutines
 			preprocess.Go(func() error {
 				defer sem.Release(1)
-				f, err := file.New(item)
+				f, err := file.New().Load(item)
 				if err != nil {
 					return err
 				}

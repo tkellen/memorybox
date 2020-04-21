@@ -1,9 +1,9 @@
-// Sure would be nice if a VFS implementation existed for golang.
-package simplecli
+package simplecli_test
 
 import (
 	"errors"
 	"github.com/segmentio/ksuid"
+	. "github.com/tkellen/memorybox/pkg/simplecli"
 	"io"
 	"io/ioutil"
 	"os"
