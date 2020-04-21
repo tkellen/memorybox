@@ -5,7 +5,7 @@ package meta
 
 import (
 	"fmt"
-	"github.com/tkellen/memorybox/pkg/metadata"
+	"github.com/tkellen/memorybox/pkg/file"
 	"github.com/tkellen/memorybox/pkg/store"
 	"io"
 )
@@ -23,83 +23,50 @@ type Command struct{}
 
 // Main gets a metadata object from a defined store.
 func (Command) Main(store store.Store, hash string, sink io.Writer) error {
-	reader, _, lookupErr := getReader(store, hash)
-	if lookupErr != nil {
-		return lookupErr
+	metaFile, findErr := findMeta(store, hash)
+	if findErr != nil {
+		return findErr
 	}
-	if _, err := io.Copy(sink, reader); err != nil {
+	defer metaFile.Close()
+	if _, err := io.Copy(sink, metaFile); err != nil {
 		return err
 	}
 	return nil
 }
 
-// Set adds a key to a metadata file.
-func (c Command) Set(store store.Store, hash string, key string, value interface{}) error {
-	meta, name, lookupErr := get(store, hash)
-	if lookupErr != nil {
-		return lookupErr
+// Set adds a key to a metadata file and persists it to the store.
+func (Command) Set(store store.Store, search string, key string, value interface{}) error {
+	metaFile, findErr := findMeta(store, search)
+	if findErr != nil {
+		return findErr
 	}
-	meta.Set(key, value)
-	reader, readerErr := meta.ToReader()
-	if readerErr != nil {
-		return readerErr
-	}
-	return store.Put(reader, name)
+	metaFile.SetMeta(key, value)
+	return store.Put(metaFile, metaFile.Name())
 }
 
-// Delete remove a key from a metadata file.
-func (Command) Delete(store store.Store, hash string, key string) error {
-	meta, name, lookupErr := get(store, hash)
-	if lookupErr != nil {
-		return lookupErr
+// Delete removes a key from a metadata file and persists it to the store.
+func (Command) Delete(store store.Store, search string, key string) error {
+	metaFile, findErr := findMeta(store, search)
+	if findErr != nil {
+		return findErr
 	}
-	meta.Delete(key)
-	reader, readerErr := meta.ToReader()
-	if readerErr != nil {
-		return readerErr
-	}
-	return store.Put(reader, name)
+	metaFile.DeleteMeta(key)
+	return store.Put(metaFile, metaFile.Name())
 }
 
-func getReader(store store.Store, search string) (io.ReadCloser, string, error) {
+func findMeta(store store.Store, search string) (*file.File, error) {
 	// First determine if the object to annotate even exists.
 	matches, searchErr := store.Search(search)
 	if searchErr != nil {
-		return nil, "", fmt.Errorf("get: %s", searchErr)
+		return nil, fmt.Errorf("get: %s", searchErr)
 	}
 	if len(matches) != 1 {
-		return nil, "", fmt.Errorf("%d objects matched", len(matches))
+		return nil, fmt.Errorf("%d objects matched", len(matches))
 	}
-	// If there is exactly one match, calculate the name of the meta object.
-	metaObjectName := "meta-" + matches[0]
-	// Try to fetch an existing meta object.
-	reader, err := store.Get(metaObjectName)
-	// Return whatever we found.
-	return reader, metaObjectName, err
-}
-
-func get(store store.Store, search string) (*metadata.Metadata, string, error) {
-	meta := &metadata.Metadata{}
-	reader, name, err := getReader(store, search)
-	// If there is existing metadata, attempt to decode it.
-	if err == nil {
-		defer reader.Close()
-		if meta, err = metadata.NewFromReader(reader); err != nil {
-			// If decoding failed, report the failure so the user can decide
-			// what to do with the potentially malformed file.
-			return nil, "", err
-		}
+	// If there is exactly one match, try to fetch it.
+	reader, getErr := store.Get(file.MetaFileName(matches[0]))
+	if getErr != nil {
+		return nil, getErr
 	}
-	// If this is reached, an object exists for the requested hash but it is
-	// uncertain if a metadata object for it exists (a error finding it
-	// could be due to a network / service failure in the store requesting
-	// it). By returning without an error, an assumption has been made that
-	// the file definitively does not yet exist and the consumer should
-	// begin populating an empty one with their data.
-	// TODO:
-	//   Dig into failures on store.Get to ensure the failure isn't related to
-	//   the backing store being unable to process requests. The lack of this
-	//   checking makes it possible for an existing meta object to be clobbered
-	//   by a consumer who thinks it isn't there.
-	return meta, name, nil
+	return file.New(reader)
 }

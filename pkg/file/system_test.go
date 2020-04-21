@@ -6,7 +6,7 @@
 // simulated). More details here:
 // https://github.com/golang/go/issues/14106
 // https://github.com/golang/go/issues/21592
-package hashreader
+package file
 
 import (
 	"bytes"
@@ -14,23 +14,20 @@ import (
 	"io/ioutil"
 	"net/http"
 	"os"
-	"strings"
 	"testing"
 	"testing/iotest"
 )
 
 func TestReadStdinInputSuccess(t *testing.T) {
-	tempDir, tempErr := ioutil.TempDir("", "*")
-	if tempErr != nil {
-		t.Fatalf("test setup: %s", tempErr)
-	}
-	defer os.RemoveAll(tempDir)
 	expectedBytes := []byte("test")
-	expectedSize := int64(len(expectedBytes))
-	expectedHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
-	sys := newSystem()
+	sys, sysErr := newSystem()
+	if sysErr != nil {
+		t.Fatalf("test setup: %s", sysErr)
+	}
+	defer os.RemoveAll(sys.TempDir)
 	sys.Stdin = ioutil.NopCloser(bytes.NewReader(expectedBytes))
-	reader, actualSize, actualHash, err := sys.read("-", tempDir)
+	reader, _, err := sys.read("-")
+	defer reader.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -41,26 +38,17 @@ func TestReadStdinInputSuccess(t *testing.T) {
 	if !bytes.Equal(expectedBytes, actualBytes) {
 		t.Fatalf("expected bytes %s, got %s", expectedBytes, actualBytes)
 	}
-	if expectedSize != actualSize {
-		t.Fatalf("expected size %d, got %d", expectedSize, actualSize)
-	}
-	if expectedHash != actualHash {
-		t.Fatalf("expected hash %s, got %s", expectedHash, actualHash)
-	}
 }
 
 func TestReadURLInputSuccess(t *testing.T) {
-	tempDir, tempErr := ioutil.TempDir("", "*")
-	if tempErr != nil {
-		t.Fatalf("test setup: %s", tempErr)
-	}
-	defer os.RemoveAll(tempDir)
 	input := "http://totally.legit/url.html"
 	expectedBytes := []byte("test")
-	expectedSize := int64(len(expectedBytes))
-	expectedHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
 	getCalled := false
-	sys := newSystem()
+	sys, sysErr := newSystem()
+	if sysErr != nil {
+		t.Fatalf("test setup: %s", sysErr)
+	}
+	defer os.RemoveAll(sys.TempDir)
 	// Mock every http request to contain our expected bytes.
 	sys.Get = func(url string) (resp *http.Response, err error) {
 		if input != url {
@@ -77,7 +65,8 @@ func TestReadURLInputSuccess(t *testing.T) {
 			ContentLength: int64(len(expectedBytes)),
 		}, nil
 	}
-	reader, actualSize, actualHash, err := sys.read(input, tempDir)
+	reader, _, err := sys.read(input)
+	defer reader.Close()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,33 +77,26 @@ func TestReadURLInputSuccess(t *testing.T) {
 	if readErr != nil {
 		t.Fatal(err)
 	}
-	if expectedSize != actualSize {
-		t.Fatalf("expected size %d, got %d", expectedSize, actualSize)
-	}
 	if !bytes.Equal(expectedBytes, actualBytes) {
 		t.Fatalf("expected bytes %s, got %s", expectedBytes, actualBytes)
-	}
-	if expectedHash != actualHash {
-		t.Fatalf("expected hash %s, got %s", expectedHash, actualHash)
 	}
 }
 
 func TestReadURLInputFailure(t *testing.T) {
-	tempDir, tempErr := ioutil.TempDir("", "*")
-	if tempErr != nil {
-		t.Fatalf("test setup: %s", tempErr)
-	}
-	defer os.RemoveAll(tempDir)
 	input := "http://totally.legit/url.html"
 	expectedErr := errors.New("bad request")
 	getCalled := false
-	sys := newSystem()
+	sys, sysErr := newSystem()
+	if sysErr != nil {
+		t.Fatalf("test setup: %s", sysErr)
+	}
+	defer os.RemoveAll(sys.TempDir)
 	// Mock failed http request.
-	sys.Get = func(url string) (resp *http.Response, err error) {
+	sys.Get = func(url string) (*http.Response, error) {
 		getCalled = true
 		return nil, expectedErr
 	}
-	_, _, _, actualErr := sys.read(input, tempDir)
+	_, _, actualErr := sys.read(input)
 	if expectedErr != actualErr {
 		t.Fatalf("expected err %s, got %s", expectedErr, actualErr)
 	}
@@ -124,25 +106,24 @@ func TestReadURLInputFailure(t *testing.T) {
 }
 
 func TestReadWithFilepathSuccess(t *testing.T) {
-	tempDir, tempErr := ioutil.TempDir("", "*")
-	if tempErr != nil {
-		t.Fatalf("test setup: %s", tempErr)
-	}
-	defer os.RemoveAll(tempDir)
 	expectedBytes := []byte("test")
-	expectedSize := int64(len(expectedBytes))
-	expectedHash := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
+	sys, sysErr := newSystem()
+	if sysErr != nil {
+		t.Fatalf("test setup: %s", sysErr)
+	}
+	defer os.RemoveAll(sys.TempDir)
 	// create the file we are about to read
-	inputFile, tempFileErr := ioutil.TempFile(tempDir, "*")
+	inputFile, tempFileErr := ioutil.TempFile(os.TempDir(), "*")
 	if tempFileErr != nil {
 		t.Fatalf("test setup: %s", tempFileErr)
 	}
+	defer os.Remove(inputFile.Name())
 	_, writeErr := inputFile.Write(expectedBytes)
 	inputFile.Close()
 	if writeErr != nil {
 		t.Fatalf("test setup: %s", writeErr)
 	}
-	reader, actualSize, actualHash, err := HashReader(inputFile.Name(), tempDir)
+	reader, _, err := sys.read(inputFile.Name())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,17 +134,16 @@ func TestReadWithFilepathSuccess(t *testing.T) {
 	if !bytes.Equal(expectedBytes, actualBytes) {
 		t.Fatalf("expected bytes %s, got %s", expectedBytes, actualBytes)
 	}
-	if expectedSize != actualSize {
-		t.Fatalf("expected size %d, got %d", expectedSize, actualSize)
-	}
-	if expectedHash != actualHash {
-		t.Fatalf("expected hash %s, got %s", expectedHash, actualHash)
-	}
 }
 
 func TestReadWithFilepathInputFailure(t *testing.T) {
 	input := "path/to/nothing"
-	_, _, _, err := HashReader(input, "")
+	sys, sysErr := newSystem()
+	if sysErr != nil {
+		t.Fatalf("test setup: %s", sysErr)
+	}
+	defer os.RemoveAll(sys.TempDir)
+	_, _, err := sys.read(input)
 	if err == nil {
 		t.Fatalf("expected error on file not found")
 	}
@@ -172,36 +152,15 @@ func TestReadWithFilepathInputFailure(t *testing.T) {
 	}
 }
 
-func TestReadWithHashFailure(t *testing.T) {
-	tempDir, tempErr := ioutil.TempDir("", "*")
-	if tempErr != nil {
-		t.Fatalf("test setup: %s", tempErr)
-	}
-	defer os.RemoveAll(tempDir)
-	// create the file we are about to read
-	inputFile, tempFileErr := ioutil.TempFile(tempDir, "*")
-	if tempFileErr != nil {
-		t.Fatalf("test setup: %s", tempFileErr)
-	}
-	inputFile.Close()
-	sys := newSystem()
-	sys.Open = func(name string) (*os.File, error) {
-		file, err := os.Open(name)
-		file.Close()
-		return file, err
-	}
-	_, _, _, err := sys.read(inputFile.Name(), tempDir)
-	if err == nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(err.Error(), "closed") {
-		t.Fatalf("expected file already closed error, got %s", err)
-	}
-}
-
 func TestReadWithTempFileCreationFailure(t *testing.T) {
 	input := "-"
-	_, _, _, err := HashReader(input, "/tmp/nope/bad")
+	sys, sysErr := newSystem()
+	if sysErr != nil {
+		t.Fatalf("test setup: %s", sysErr)
+	}
+	defer os.RemoveAll(sys.TempDir)
+	sys.TempDir = "/tmp/nope/bad"
+	_, _, err := sys.read(input)
 	if err == nil {
 		t.Fatal(err)
 	}
@@ -233,11 +192,11 @@ func TestInputIsURL(t *testing.T) {
 	}
 }
 
-func TestHash(t *testing.T) {
+func TestSha256(t *testing.T) {
 	input := []byte("test")
 	expected := "9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256"
 	expectedSize := int64(len(input))
-	actual, actualSize, goodErr := hash(bytes.NewReader(input))
+	actual, actualSize, goodErr := sha256(bytes.NewReader(input))
 	if goodErr != nil {
 		t.Fatal(goodErr)
 	}
@@ -247,7 +206,7 @@ func TestHash(t *testing.T) {
 	if expectedSize != actualSize {
 		t.Fatalf("expected size %d, got %d", expectedSize, actualSize)
 	}
-	_, _, err := hash(iotest.TimeoutReader(bytes.NewReader([]byte("test"))))
+	_, _, err := sha256(iotest.TimeoutReader(bytes.NewReader([]byte("test"))))
 	if err == nil {
 		t.Fatal("expected error on bad reader")
 	}

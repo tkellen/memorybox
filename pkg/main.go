@@ -64,16 +64,22 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 		return configFileErr
 	}
 	run.ConfigFile = configFile
-	// Load backing store.
-	store, storeErr := store.New(*configFile.Target(flags.Target))
-	if storeErr != nil {
-		return storeErr
+	// If we are running the config command we do not need a backing store.
+	if !flags.Config {
+		// Load backing store.
+		store, storeErr := store.New(*configFile.Target(flags.Target))
+		if storeErr != nil {
+			return storeErr
+		}
+		run.Store = store
 	}
-	run.Store = store
 	// Load all command interfaces.
 	run.ConfigCmd = config.Command{}
 	run.GetCmd = get.Command{}
-	run.PutCmd = put.Command{}
+	run.PutCmd = put.Command{
+		Concurrency: flags.Concurrency,
+		Logger:      run.Logger,
+	}
 	run.MetaCmd = meta.Command{}
 	return nil
 }
@@ -99,9 +105,9 @@ func (run *Runner) GetMain() error {
 	return run.GetCmd.Main(run.Store, run.Flags.Hash, os.Stdout)
 }
 
-// PutMain persists a requested input to the configured backing store.
+// PutMain persists the requested inputs into the configured backing store.
 func (run *Runner) PutMain() error {
-	return run.PutCmd.Main(run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger, run.TempPath())
+	return run.PutCmd.Main(run.Store, run.Flags.Input)
 }
 
 // ConfigMain displays the current configuration file contents.

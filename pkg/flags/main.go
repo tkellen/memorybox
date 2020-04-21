@@ -8,13 +8,13 @@ import (
 )
 
 const usageTemplate = `Usage:
-  %[1]s [options] <target> get <hash>
-  %[1]s [options] <target> put <input>...
-  %[1]s <target> meta <hash> [set <key> <value> | delete [<key>]]
-  %[1]s config [set <target> <key> <value> | delete <target> [<key>]]
+  %[1]s [-d] get <target> <hash>
+  %[1]s [--concurrency=<num> -d] put <target> <input>...
+  %[1]s [-d] meta <target> <hash> [set <key> <value> | delete [<key>]]
+  %[1]s [-d] config [set <target> <key> <value> | delete <target> [<key>]]
 
 Options:
-  -c --concurrency=<num>   Max number of concurrent operations [default: 10].
+  -c --concurrency=<num>   Max concurrent operations [default: 10].
   -d --debug               Show debugging output [default: false].
   -h --help                Show this screen.
   -v --version             Show version.
@@ -25,13 +25,13 @@ Examples
   %[1]s config set local extra value
   %[1]s config
   %[1]s config delete local extra
-  %[1]s -d local put **/*.go
-  %[1]s -d local put https://scaleout.team/logo.svg  
-  printf "data" | %[1]s -d local put -
-  %[1]s -d local get 3a
-  %[1]s -d local meta 3a
-  %[1]s -d local meta 3a set newKey someValue
-  %[1]s -d local meta 3a delete newKey
+  %[1]s -d put local **/*.go
+  %[1]s -d put local https://scaleout.team/logo.svg  
+  printf "data" | %[1]s -d put local -
+  %[1]s -d get local 3a
+  %[1]s -d meta local 3a | jq
+  %[1]s -d meta local 3a set newKey someValue
+  %[1]s -d meta local 3a delete newKey
 `
 
 // Flags provides a typed interface to all supported command line arguments.

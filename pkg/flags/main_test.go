@@ -15,7 +15,7 @@ func TestNew(t *testing.T) {
 	}{
 		"good args": {
 			args:        []string{"memorybox", "config"},
-			expected:    Flags{Config: true, Concurrency: 10, Input: []string{}},
+			expected:    Flags{Config: true, Input: []string{}, Concurrency: 10},
 			expectedErr: nil,
 		},
 		"bad args": {
