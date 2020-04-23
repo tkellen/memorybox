@@ -39,19 +39,18 @@ func (c Command) Main(store store.Store, requests []string) error {
 	// condition can occur where the source meta-files can be overwritten by a
 	// concurrent goroutine which is persisting the data-file at the same time
 	// (it will incorrectly think it needs to create a new meta-file because it
-	// does not yet see that one exists).
+	// does not yet see that one is arriving).
 	//
 	// This is solved by persisting all metadata files in a request first. Two
 	// instances of memorybox being run at the same time, both copying the
 	// contents of one store to another could still suffer from this problem.
 	// Seems unlikely...
-
+	//
 	// Prepare a channel to receive each data-file that should be persisted to
 	// the store. If a meta-file for a data-file exists in the requested set of
 	// files to save, the meta-file will be stored before the data-file is sent
 	// to this channel.
 	newDataFiles := make(chan *file.File)
-
 	// Preprocess all files as described above.
 	preprocess, preprocessCtx := errgroup.WithContext(context.Background())
 	preprocess.Go(func() error {
@@ -63,7 +62,7 @@ func (c Command) Main(store store.Store, requests []string) error {
 			item := item // https://golang.org/doc/faq#closures_and_goroutines
 			preprocess.Go(func() error {
 				defer sem.Release(1)
-				f, err := file.New().Load(item)
+				f, err := file.New(item)
 				if err != nil {
 					return err
 				}
@@ -72,7 +71,7 @@ func (c Command) Main(store store.Store, requests []string) error {
 				// existing meta-file because there is currently no way of
 				// knowing if it is the latest. If someone is manually moving
 				// meta-files it is safe to assume they are fine with this.
-				if f.IsMetaFile() {
+				if f.IsMetaDataFile() {
 					c.Logger("%s -> %s (metafile detected)", name, name)
 					return store.Put(f, name)
 				}
@@ -91,7 +90,6 @@ func (c Command) Main(store store.Store, requests []string) error {
 		}
 		return nil
 	})
-
 	// Listen for new data files.
 	newFileGroup, newFileCtx := errgroup.WithContext(context.Background())
 	newFileGroup.Go(func() error {
@@ -110,8 +108,8 @@ func (c Command) Main(store store.Store, requests []string) error {
 			// Also persist a meta-file, but only if one doesn't already exist.
 			newFileGroup.Go(func() error {
 				defer sem.Release(1)
-				metaFile := item.NewMetaFile()
-				if !store.Exists(metaFile.Name()) {
+				if !store.Exists(file.MetaFileName(item.Name())) {
+					metaFile := file.NewMetaFile(item)
 					return store.Put(metaFile, metaFile.Name())
 				}
 				return nil

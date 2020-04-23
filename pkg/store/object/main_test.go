@@ -161,3 +161,29 @@ func TestStore_Exists(t *testing.T) {
 		t.Fatalf("expected call did not occur")
 	}
 }
+
+func TestStore_Search(t *testing.T) {
+	called := false
+	expectedBucket := "bucket"
+	expectedPrefix := "test"
+	New(expectedBucket, &s3mock{
+		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
+			called = true
+			results := make(chan minio.ObjectInfo)
+			if expectedBucket != bucket {
+				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
+			}
+			if expectedPrefix != prefix {
+				t.Fatalf("expected %s as key, got %s", expectedPrefix, prefix)
+			}
+			go func() {
+				results <- minio.ObjectInfo{}
+				close(results)
+			}()
+			return results
+		},
+	}).Search(expectedPrefix)
+	if !called {
+		t.Fatalf("expected call did not occur")
+	}
+}

@@ -56,7 +56,7 @@ func (s *Store) Get(request string) (io.ReadCloser, error) {
 
 // Search finds matching files in storage by prefix.
 func (s *Store) Search(search string) ([]string, error) {
-	var matches []string
+	matches := []string{}
 	results, err := filepath.Glob(path.Join(s.RootPath, search) + "*")
 	if err != nil {
 		return nil, fmt.Errorf("local store search: %s", err)

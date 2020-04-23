@@ -6,11 +6,16 @@ package localdisk_test
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
+	"github.com/google/go-cmp/cmp"
 	. "github.com/tkellen/memorybox/pkg/store/localdisk"
+	"io"
 	"io/ioutil"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 	"testing"
 	"testing/iotest"
 )
@@ -141,5 +146,66 @@ func TestStore_Exists(t *testing.T) {
 	}
 	if store.Exists("nope") {
 		t.Fatal("expected boolean false for file that does not exist")
+	}
+}
+
+func TestStore_Search(t *testing.T) {
+	tempDir, tempErr := ioutil.TempDir("", "*")
+	if tempErr != nil {
+		t.Fatalf("test setup: %s", tempErr)
+	}
+	defer os.RemoveAll(tempDir)
+	store := New(tempDir)
+	expectedFiles := []string{"foo", "bar", "baz"}
+	reader := func(content string) io.ReadCloser {
+		return ioutil.NopCloser(bytes.NewReader([]byte(content)))
+	}
+	for _, file := range expectedFiles {
+		if err := store.Put(reader(file), file); err != nil {
+			t.Fatalf("test setup: %s", err)
+		}
+	}
+	table := map[string]struct {
+		search          string
+		expectedMatches []string
+		expectedErr     error
+	}{
+		"multiple matches": {
+			search:          "b",
+			expectedMatches: []string{"bar", "baz"},
+			expectedErr:     nil,
+		},
+		"one match": {
+			search:          "f",
+			expectedMatches: []string{"foo"},
+			expectedErr:     nil,
+		},
+		"no matches": {
+			search:          "nope",
+			expectedMatches: []string{},
+			expectedErr:     nil,
+		},
+		"failure due to bad globbing pattern": {
+			search:          "[]a]",
+			expectedMatches: []string{},
+			expectedErr:     filepath.ErrBadPattern,
+		},
+	}
+	for name, test := range table {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			actualMatches, err := store.Search(test.search)
+			if err != nil && test.expectedErr == nil {
+				t.Fatal(err)
+			}
+			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
+				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
+			}
+			if err == nil {
+				if diff := cmp.Diff(test.expectedMatches, actualMatches); diff != "" {
+					t.Fatal(diff)
+				}
+			}
+		})
 	}
 }

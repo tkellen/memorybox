@@ -40,7 +40,7 @@ func (Command) Set(store store.Store, search string, key string, value interface
 	if findErr != nil {
 		return findErr
 	}
-	metaFile.SetMeta(key, value)
+	metaFile.MetaSet(key, value.(string))
 	return store.Put(metaFile, metaFile.Name())
 }
 
@@ -50,7 +50,7 @@ func (Command) Delete(store store.Store, search string, key string) error {
 	if findErr != nil {
 		return findErr
 	}
-	metaFile.DeleteMeta(key)
+	metaFile.MetaDelete(key)
 	return store.Put(metaFile, metaFile.Name())
 }
 
@@ -58,7 +58,7 @@ func findMeta(store store.Store, search string) (*file.File, error) {
 	// First determine if the object to annotate even exists.
 	matches, searchErr := store.Search(search)
 	if searchErr != nil {
-		return nil, fmt.Errorf("get: %s", searchErr)
+		return nil, fmt.Errorf("get: %w", searchErr)
 	}
 	if len(matches) != 1 {
 		return nil, fmt.Errorf("%d objects matched", len(matches))
@@ -68,5 +68,5 @@ func findMeta(store store.Store, search string) (*file.File, error) {
 	if getErr != nil {
 		return nil, getErr
 	}
-	return file.New().Load(reader)
+	return file.NewFromReader(reader)
 }

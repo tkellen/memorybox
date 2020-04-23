@@ -21,7 +21,7 @@ type Command struct{}
 func (Command) Main(store store.Store, hash string, sink io.Writer) error {
 	matches, searchErr := store.Search(hash)
 	if searchErr != nil {
-		return fmt.Errorf("get: %s", searchErr)
+		return fmt.Errorf("get: %w", searchErr)
 	}
 	if len(matches) != 1 {
 		return fmt.Errorf("%d objects matched", len(matches))
