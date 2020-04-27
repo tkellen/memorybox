@@ -3,6 +3,7 @@ package store
 import (
 	"github.com/tkellen/memorybox/internal/archive"
 	"io/ioutil"
+	"sort"
 	"strings"
 )
 
@@ -15,6 +16,7 @@ func Index(store Store) (map[string][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	sort.Strings(metafiles)
 	for _, metafile := range metafiles {
 		reader, getErr := store.Get(metafile)
 		if getErr != nil {

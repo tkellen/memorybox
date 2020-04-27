@@ -7,6 +7,7 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"testing/iotest"
 )
 
 // Store is a in-memory implementation of Store for testing.
@@ -86,6 +87,9 @@ func (s *Store) Get(request string) (io.ReadCloser, error) {
 		return nil, s.GetErrorWith
 	}
 	if data, ok := s.Data[request]; ok {
+		if s.GetReturnsTimeoutReader {
+			return ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader(data))), nil
+		}
 		return ioutil.NopCloser(bytes.NewReader(data)), nil
 	}
 	return nil, fmt.Errorf("not found")
