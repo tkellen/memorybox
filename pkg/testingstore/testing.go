@@ -7,12 +7,13 @@ import (
 	"io"
 	"io/ioutil"
 	"strings"
+	"sync"
 	"testing/iotest"
 )
 
 // Store is a in-memory implementation of Store for testing.
 type Store struct {
-	Data                    map[string][]byte
+	Data                    sync.Map
 	GetErrorWith            error
 	SearchErrorWith         error
 	GetReturnsTimeoutReader bool
@@ -43,10 +44,10 @@ func NewFixture(content string, isMeta bool, hashFn func(source io.Reader) (stri
 // New returns a Store pre-filled with supplied fixtures.
 func New(fixtures []Fixture) *Store {
 	store := &Store{
-		Data: map[string][]byte{},
+		Data: sync.Map{},
 	}
 	for _, fixture := range fixtures {
-		store.Data[fixture.Name] = fixture.Content
+		store.Data.Store(fixture.Name, fixture.Content)
 	}
 	return store
 }
@@ -63,7 +64,7 @@ func (s *Store) Put(source io.Reader, hash string) error {
 	if err != nil {
 		return err
 	}
-	s.Data[hash] = data
+	s.Data.Store(hash, data)
 	return nil
 }
 
@@ -73,11 +74,12 @@ func (s *Store) Search(search string) ([]string, error) {
 		return nil, s.SearchErrorWith
 	}
 	var matches []string
-	for key := range s.Data {
-		if strings.HasPrefix(key, search) {
-			matches = append(matches, key)
+	s.Data.Range(func(key interface{}, value interface{}) bool {
+		if strings.HasPrefix(key.(string), search) {
+			matches = append(matches, key.(string))
 		}
-	}
+		return true
+	})
 	return matches, nil
 }
 
@@ -86,16 +88,24 @@ func (s *Store) Get(request string) (io.ReadCloser, error) {
 	if s.GetErrorWith != nil {
 		return nil, s.GetErrorWith
 	}
-	if data, ok := s.Data[request]; ok {
+	if data, ok := s.Data.Load(request); ok {
 		if s.GetReturnsTimeoutReader {
-			return ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader(data))), nil
+			return ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader(data.([]byte)))), nil
 		}
-		return ioutil.NopCloser(bytes.NewReader(data)), nil
+		return ioutil.NopCloser(bytes.NewReader(data.([]byte))), nil
 	}
 	return nil, fmt.Errorf("not found")
 }
 
 // Exists determines if a requested object exists in the Store.
 func (s *Store) Exists(request string) bool {
-	return s.Data[request] != nil
+	exists := false
+	s.Data.Range(func(key interface{}, value interface{}) bool {
+		if key.(string) == request {
+			exists = true
+			return false
+		}
+		return true
+	})
+	return exists
 }

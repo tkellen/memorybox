@@ -19,7 +19,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/minio/minio-go/v6"
-	"github.com/tkellen/memorybox/internal/store/objectstore"
+	"github.com/tkellen/memorybox/pkg/objectstore"
 	"io"
 	"io/ioutil"
 	"testing"

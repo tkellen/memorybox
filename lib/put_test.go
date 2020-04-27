@@ -1,9 +1,9 @@
-package store_test
+package memorybox_test
 
 import (
 	"github.com/tkellen/memorybox/internal/archive"
-	"github.com/tkellen/memorybox/internal/store"
-	"github.com/tkellen/memorybox/internal/store/testingstore"
+	"github.com/tkellen/memorybox/lib"
+	"github.com/tkellen/memorybox/pkg/testingstore"
 	"io/ioutil"
 	"log"
 	"os"
@@ -14,41 +14,50 @@ import (
 func TestPutManySuccess(t *testing.T) {
 	silentLogger := log.New(ioutil.Discard, "", 0)
 	type testCase struct {
-		store                    store.Store
+		store                    memorybox.Store
 		fixtures                 []testingstore.Fixture
 		concurrency              int
 		expectedStoredFilesCount int
 		expectedErr              error
 	}
-	hashFn := store.Sha256
+	hashFn := memorybox.Sha256
 	table := map[string]testCase{
-		"store two data files": {
-			store: &testingstore.Store{Data: map[string][]byte{}},
-			fixtures: []testingstore.Fixture{
+		"store two data files": func() testCase {
+			fixtures := []testingstore.Fixture{
 				testingstore.NewFixture("foo-content", false, hashFn),
 				testingstore.NewFixture("bar-content", false, hashFn),
-			},
-			expectedStoredFilesCount: 4, // 2x fixtures, one meta file for each
-			concurrency:              2,
-		},
-		"store one meta file and one data file": {
-			store: &testingstore.Store{Data: map[string][]byte{}},
-			fixtures: []testingstore.Fixture{
+			}
+			return testCase{
+				store:                    testingstore.New(fixtures),
+				fixtures:                 fixtures,
+				concurrency:              2,
+				expectedStoredFilesCount: 4, // 2x fixtures, one meta file for each
+			}
+		}(),
+		"store one meta file and one data file": func() testCase {
+			fixtures := []testingstore.Fixture{
 				testingstore.NewFixture("foo-content", false, hashFn),
-				testingstore.NewFixture("{\"key\":\"value\"}", true, hashFn),
-			},
-			expectedStoredFilesCount: 3, // one content, two meta
-			concurrency:              2,
-		},
-		"store the same file multiple times": {
-			store: &testingstore.Store{Data: map[string][]byte{}},
-			fixtures: []testingstore.Fixture{
+				testingstore.NewFixture(`{"key":"value"}`, true, hashFn),
+			}
+			return testCase{
+				store:                    testingstore.New(fixtures),
+				fixtures:                 fixtures,
+				concurrency:              2,
+				expectedStoredFilesCount: 3, // one content, two meta
+			}
+		}(),
+		"store the same file multiple times": func() testCase {
+			fixtures := []testingstore.Fixture{
 				testingstore.NewFixture("foo-content", false, hashFn),
 				testingstore.NewFixture("foo-content", false, hashFn),
-			},
-			expectedStoredFilesCount: 2, // one content, one meta
-			concurrency:              2,
-		},
+			}
+			return testCase{
+				store:                    testingstore.New(fixtures),
+				fixtures:                 fixtures,
+				concurrency:              2,
+				expectedStoredFilesCount: 2, // one content, one meta
+			}
+		}(),
 	}
 	for name, test := range table {
 		test := test
@@ -65,7 +74,7 @@ func TestPutManySuccess(t *testing.T) {
 			}
 			// Run put twice, it should be idempotent.
 			for i := 0; i < 2; i++ {
-				err := store.PutMany(test.store, hashFn, inputs, test.concurrency, silentLogger, []string{})
+				err := memorybox.PutMany(test.store, hashFn, inputs, test.concurrency, silentLogger, []string{})
 				if err != nil && test.expectedErr == nil {
 					t.Fatal(err)
 				}
@@ -79,15 +88,19 @@ func TestPutManySuccess(t *testing.T) {
 					t.Fatalf("expected %s to be in store", fixture.Name)
 				}
 				// if the fixture wasn't a metafile, make sure one was made
-				if strings.HasPrefix(fixture.Name, archive.MetaFilePrefix) {
+				if !strings.HasPrefix(fixture.Name, archive.MetaFilePrefix) {
 					metaFileName := archive.MetaFileName(fixture.Name)
-					if test.store.Exists(metaFileName) {
+					if !test.store.Exists(metaFileName) {
 						t.Fatalf("expected %s to be in store", metaFileName)
 					}
 				}
 			}
+			actualStoredFileCount := 0
+			test.store.(*testingstore.Store).Data.Range(func(key, value interface{}) bool {
+				actualStoredFileCount = actualStoredFileCount + 1
+				return true
+			})
 			// Ensure no unexpected files were persisted.
-			actualStoredFileCount := len(test.store.(*testingstore.Store).Data)
 			if actualStoredFileCount != test.expectedStoredFilesCount {
 				t.Fatalf("expected %d files in store, saw %d", test.expectedStoredFilesCount, actualStoredFileCount)
 			}
@@ -97,7 +110,7 @@ func TestPutManySuccess(t *testing.T) {
 
 func TestPutManyFail(t *testing.T) {
 	silentLogger := log.New(ioutil.Discard, "", 0)
-	err := store.PutMany(&testingstore.Store{}, store.Sha256, []string{"nope"}, 2, silentLogger, []string{})
+	err := memorybox.PutMany(testingstore.New([]testingstore.Fixture{}), memorybox.Sha256, []string{"nope"}, 2, silentLogger, []string{})
 	if err == nil {
 		t.Fatal("expected error")
 	}

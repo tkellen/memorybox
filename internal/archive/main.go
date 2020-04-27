@@ -29,7 +29,7 @@ type File struct {
 	// file through hashFn.
 	name string
 	// Source is a string representation of where the File "came from" and is
-	// used primarily for logging
+	// used primarily for logging.
 	source string
 	// Size holds the size of the file. Used primarily to populate metadata
 	// about the file.
@@ -37,7 +37,8 @@ type File struct {
 	// Filepath indicates where the data this File represents can be found.
 	// In the case of data arriving from the network or stdin, this will be a
 	// path to a temporary file where the data is buffered for consumers to
-	// read.
+	// read (the original data stream is consumed to calculate the filename
+	// when the instance is created).
 	filepath string
 	// See Read method.
 	reader io.ReadCloser
@@ -45,8 +46,7 @@ type File struct {
 }
 
 // MetaKey is a unique key that appears in metadata files (which are plain text
-// files containing json). The value of this key is the filename of the
-// object it describes.
+// files containing json).
 const MetaKey = "memorybox"
 
 // MetaFilePrefix controls naming for metadata files (which are named the
@@ -55,7 +55,7 @@ const MetaFilePrefix = MetaKey + "-meta-"
 
 // MetaFileMaxSize defines the maximum size allowed for metadata files. This
 // is only enforced to prevent memorybox from decoding potentially huge JSON
-// blobs to see if they are memorybox metadata or just regular ol' json. This
+// blobs to see if they are memorybox metadata vs just regular ol' json. This
 // value can be increased if a real world use-case dictates it.
 const MetaFileMaxSize = 1 * 1024 * 1024
 
@@ -283,7 +283,7 @@ func (f *File) Source() string {
 func (f *File) Read(p []byte) (int, error) {
 	// A reader is created the first time Read is called because its content may
 	// be driven by internal state that can change between the time a File is
-	// instantiated and when the content represents is consumed.
+	// instantiated and when the content it represents is consumed.
 	if f.reader == nil {
 		if f.IsMetaDataFile() {
 			f.reader = ioutil.NopCloser(bytes.NewReader(f.meta))
@@ -358,9 +358,4 @@ func (f *File) MetaGet(key string) interface{} {
 		return result
 	}
 	return value.String()
-}
-
-// Meta returns a copy of the byte array that represents the file's metadata.
-func (f *File) Meta() []byte {
-	return f.meta
 }

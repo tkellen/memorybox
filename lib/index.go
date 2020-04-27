@@ -1,4 +1,4 @@
-package store
+package memorybox
 
 import (
 	"github.com/tkellen/memorybox/internal/archive"

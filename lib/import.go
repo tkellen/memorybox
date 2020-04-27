@@ -1,4 +1,4 @@
-package store
+package memorybox
 
 import (
 	"bufio"
@@ -103,8 +103,7 @@ func collectImports(requests []string) ([]importEntry, error) {
 			return nil
 		})
 	}
-	// Start a goroutine listening on the entries channel to aggregate results
-	// in a thread-safe manner.
+	// Start listening on the entries channel to aggregate results.
 	var imports []importEntry
 	collector := sync.WaitGroup{}
 	collector.Add(1)

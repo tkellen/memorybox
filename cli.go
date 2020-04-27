@@ -1,10 +1,10 @@
-package cli
+package main
 
 import (
 	"fmt"
 	"github.com/docopt/docopt-go"
 	"github.com/tkellen/memorybox/internal/configfile"
-	"github.com/tkellen/memorybox/internal/store"
+	"github.com/tkellen/memorybox/lib"
 	"io"
 	"log"
 	"os"
@@ -63,7 +63,7 @@ type Runner struct {
 	Logger     *log.Logger
 	ConfigFile *configfile.ConfigFile
 	Flags      Flags
-	Store      store.Store
+	Store      memorybox.Store
 	HashFn     func(source io.Reader) (string, int64, error)
 	PathConfig string
 	PathTemp   string
@@ -73,7 +73,7 @@ type Runner struct {
 func New(logger *log.Logger) *Runner {
 	return &Runner{
 		Logger:     logger,
-		HashFn:     store.Sha256,
+		HashFn:     memorybox.Sha256,
 		PathConfig: "~/.memorybox/config",
 		PathTemp:   path.Join(os.TempDir(), "memorybox"),
 	}
@@ -119,7 +119,7 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 	if !run.Flags.Config {
 		// Only create a backing store if we're going to interact with one.
 		target := run.ConfigFile.Target(run.Flags.Target)
-		store, storeErr := store.New(*target)
+		store, storeErr := memorybox.New(*target)
 		if storeErr != nil {
 			return fmt.Errorf("failed to load %v: %s", target, storeErr)
 		}
@@ -132,13 +132,13 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 func (run *Runner) Dispatch() error {
 	f := run.Flags
 	if f.Put {
-		return store.PutMany(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
+		return memorybox.PutMany(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
 	}
 	if f.Import {
-		return store.Import(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
+		return memorybox.Import(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
 	}
 	if f.Get {
-		return store.Get(run.Store, run.Flags.Hash, os.Stdout)
+		return memorybox.Get(run.Store, run.Flags.Hash, os.Stdout)
 	}
 	if f.Config {
 		if f.Delete {
@@ -158,12 +158,12 @@ func (run *Runner) Dispatch() error {
 	}
 	if f.Meta {
 		if f.Delete {
-			return store.MetaDelete(run.Store, run.Flags.Hash, run.Flags.Key)
+			return memorybox.MetaDelete(run.Store, run.Flags.Hash, run.Flags.Key)
 		}
 		if f.Set {
-			return store.MetaSet(run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
+			return memorybox.MetaSet(run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
 		}
-		return store.MetaGet(run.Store, run.Flags.Hash, os.Stdout)
+		return memorybox.MetaGet(run.Store, run.Flags.Hash, os.Stdout)
 	}
 	return fmt.Errorf("command not implemented")
 }

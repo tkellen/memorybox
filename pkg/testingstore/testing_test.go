@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/store/testingstore"
+	"github.com/tkellen/memorybox/pkg/testingstore"
 	"io"
 	"io/ioutil"
 	"path/filepath"
@@ -30,9 +30,12 @@ func TestStore_Put(t *testing.T) {
 	if putErr != nil {
 		t.Fatal(putErr)
 	}
-	actual := store.Data[filename]
-	if !bytes.Equal(expected, actual) {
-		t.Fatalf("expected put file to contain %s, got %s", expected, actual)
+	if actual, ok := store.Data.Load(filename); ok {
+		if !bytes.Equal(expected, actual.([]byte)) {
+			t.Fatalf("expected put file to contain %s, got %s", expected, actual)
+		}
+	} else {
+		t.Fatal("expected item to be in store")
 	}
 }
 

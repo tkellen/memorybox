@@ -22,8 +22,7 @@ jobs:
     - name: build and test
       run: |
         go build -v .
-        go test -v $(go list ./... | sed "1,2d") -coverprofile=profile.cov
-      # remove hack and root main.go ^
+        go test -v $(go list ./... | grep -v hack) -coverprofile=profile.cov
     - name: push code coverage to coveralls.io
       if: matrix.os == 'ubuntu-latest'
       uses: shogo82148/actions-goveralls@v1.2.2

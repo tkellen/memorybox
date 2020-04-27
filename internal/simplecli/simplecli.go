@@ -11,7 +11,7 @@ import (
 	"path"
 )
 
-// Runner defines an interface for the lifecycle of a command line program.
+// CLIRunner defines an interface for the lifecycle of a command line program.
 type CLIRunner interface {
 	// ConfigPath should return a path to a configuration file to read.
 	ConfigPath() string

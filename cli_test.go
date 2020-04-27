@@ -1,9 +1,8 @@
-package cli_test
+package main
 
 import (
 	"errors"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/cli"
 	"github.com/tkellen/memorybox/internal/simplecli"
 	"io/ioutil"
 	"log"
@@ -137,7 +136,7 @@ func TestRunner(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer os.RemoveAll(tempDir)
-					runner := cli.New(silentLogger)
+					runner := New(silentLogger)
 					(*runner).PathConfig = configPath
 					runErr := simplecli.Run(runner, args)
 					if runErr != nil && expectedErr == nil {

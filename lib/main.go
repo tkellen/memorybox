@@ -1,12 +1,12 @@
-package store
+package memorybox
 
 import (
 	"encoding/hex"
 	"fmt"
 	hash "github.com/minio/sha256-simd"
-	"github.com/tkellen/memorybox/internal/store/localdiskstore"
-	"github.com/tkellen/memorybox/internal/store/objectstore"
-	"github.com/tkellen/memorybox/internal/store/testingstore"
+	"github.com/tkellen/memorybox/pkg/localdiskstore"
+	"github.com/tkellen/memorybox/pkg/objectstore"
+	"github.com/tkellen/memorybox/pkg/testingstore"
 	"io"
 )
 

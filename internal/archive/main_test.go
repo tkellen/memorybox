@@ -73,10 +73,10 @@ func TestFile_NewAndNewFromReader(t *testing.T) {
 		},
 		"json formatted input with memorybox key is metafile": {
 			hashFn:                 identityHash,
-			input:                  ioutil.NopCloser(bytes.NewReader([]byte(`{"memorybox":{"file":"test","source":"ioutil.nopCloser","size":0},"data":{}}`))),
+			input:                  ioutil.NopCloser(bytes.NewReader([]byte(`{"data":{},"memorybox":{"file":"test","size":0,"source":"ioutil.nopCloser"}}`))),
 			expectedIsMetaDataFile: true,
 			expectedSource:         "memorybox-meta-test",
-			expectedBytes:          []byte(`{"memorybox":{"file":"test","source":"ioutil.nopCloser","size":0},"data":{}}`),
+			expectedBytes:          []byte(`{"data":{},"memorybox":{"file":"test","size":0,"source":"ioutil.nopCloser"}}`),
 		},
 		"json formatted input without memorybox key is not metafile": {
 			hashFn:                 identityHash,
@@ -183,10 +183,14 @@ func TestFile_Read(t *testing.T) {
 			}
 			defer f.Close()
 			f.MetaSet("test", "value")
-			metafile := archive.NewMetaFile(f)
+			metaFile := archive.NewMetaFile(f)
+			// get content, which will exhaust reader
+			bytes, _ := ioutil.ReadAll(metaFile)
+			// make new one from original
+			metaFile = archive.NewMetaFile(f)
 			return testCase{
-				file:          metafile,
-				expectedBytes: metafile.Meta(),
+				file:          metaFile,
+				expectedBytes: bytes,
 				expectedErr:   nil,
 			}
 		}(),
@@ -228,8 +232,8 @@ func TestFile_Read(t *testing.T) {
 			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
-			if diff := cmp.Diff(test.expectedBytes, actualContent); diff != "" {
-				t.Fatal(diff)
+			if !bytes.Equal(test.expectedBytes, actualContent) {
+				t.Fatalf("expected %s, got %s", test.expectedBytes, actualContent)
 			}
 			if diff := cmp.Diff(expectedSize, size); diff != "" {
 				t.Fatalf(diff)
@@ -254,10 +258,10 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 				t.Fatalf("test setup: %s", err)
 			}
 			f.Close()
-			metafile := archive.NewMetaFile(f)
-			meta := metafile.MetaGet(archive.MetaKey)
+			metaFile := archive.NewMetaFile(f)
+			meta := metaFile.MetaGet(archive.MetaKey)
 			return testCase{
-				file:         metafile,
+				file:         metaFile,
 				key:          archive.MetaKey,
 				input:        "anything",
 				expected:     meta,

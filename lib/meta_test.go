@@ -1,4 +1,4 @@
-package store_test
+package memorybox_test
 
 import (
 	"bytes"
@@ -6,8 +6,8 @@ import (
 	"github.com/acomagu/bufpipe"
 	"github.com/google/go-cmp/cmp"
 	"github.com/tkellen/memorybox/internal/archive"
-	"github.com/tkellen/memorybox/internal/store"
-	"github.com/tkellen/memorybox/internal/store/testingstore"
+	"github.com/tkellen/memorybox/lib"
+	"github.com/tkellen/memorybox/pkg/testingstore"
 	"io/ioutil"
 	"strings"
 	"testing"
@@ -20,7 +20,7 @@ type testIO struct {
 
 func TestMetaGet(t *testing.T) {
 	type testCase struct {
-		store         store.Store
+		store         memorybox.Store
 		io            *testIO
 		fixtures      []testingstore.Fixture
 		request       string
@@ -28,8 +28,8 @@ func TestMetaGet(t *testing.T) {
 		expectedErr   error
 	}
 	fixtures := []testingstore.Fixture{
-		testingstore.NewFixture("something", false, store.Sha256),
-		testingstore.NewFixture("something", true, store.Sha256),
+		testingstore.NewFixture("something", false, memorybox.Sha256),
+		testingstore.NewFixture("something", true, memorybox.Sha256),
 	}
 	table := map[string]testCase{
 		"request existing metafile": {
@@ -65,7 +65,7 @@ func TestMetaGet(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			err := store.MetaGet(test.store, test.request, test.io.writer)
+			err := memorybox.MetaGet(test.store, test.request, test.io.writer)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -85,23 +85,23 @@ func TestMetaGet(t *testing.T) {
 
 func TestMetaSetAndDelete(t *testing.T) {
 	fixtures := []testingstore.Fixture{
-		testingstore.NewFixture("something", false, store.Sha256),
-		testingstore.NewFixture("something", true, store.Sha256),
+		testingstore.NewFixture("something", false, memorybox.Sha256),
+		testingstore.NewFixture("something", true, memorybox.Sha256),
 	}
 	testStore := testingstore.New(fixtures)
 	request := fixtures[0].Name
 	expectedKeyAndValue := "test"
 	// add meta key
-	if err := store.MetaSet(testStore, request, expectedKeyAndValue, expectedKeyAndValue); err != nil {
+	if err := memorybox.MetaSet(testStore, request, expectedKeyAndValue, expectedKeyAndValue); err != nil {
 		t.Fatal(err)
 	}
 	// confirm key was set by asking for the metafile again
 	reader, writer := bufpipe.New(nil)
-	if err := store.MetaGet(testStore, request, writer); err != nil {
+	if err := memorybox.MetaGet(testStore, request, writer); err != nil {
 		t.Fatal(err)
 	}
 	writer.Close()
-	metaSetCheck, metaSetCheckErr := archive.NewFromReader(store.Sha256, reader)
+	metaSetCheck, metaSetCheckErr := archive.NewFromReader(memorybox.Sha256, reader)
 	if metaSetCheckErr != nil {
 		t.Fatal(metaSetCheckErr)
 	}
@@ -109,16 +109,16 @@ func TestMetaSetAndDelete(t *testing.T) {
 		t.Fatal("expected key %[1] to be set to %[1], saw %[1]", metaSetCheck.MetaGet(expectedKeyAndValue))
 	}
 	// remove key
-	if err := store.MetaDelete(testStore, request, expectedKeyAndValue); err != nil {
+	if err := memorybox.MetaDelete(testStore, request, expectedKeyAndValue); err != nil {
 		t.Fatal(err)
 	}
 	// confirm key was removed by asking for it again
 	reader, writer = bufpipe.New(nil)
-	if err := store.MetaGet(testStore, request, writer); err != nil {
+	if err := memorybox.MetaGet(testStore, request, writer); err != nil {
 		t.Fatal(err)
 	}
 	writer.Close()
-	metaDeleteCheck, metaDeleteCheckErr := archive.NewFromReader(store.Sha256, reader)
+	metaDeleteCheck, metaDeleteCheckErr := archive.NewFromReader(memorybox.Sha256, reader)
 	if metaDeleteCheckErr != nil {
 		t.Fatal(metaDeleteCheckErr)
 	}
@@ -129,15 +129,15 @@ func TestMetaSetAndDelete(t *testing.T) {
 
 func TestMetaFailures(t *testing.T) {
 	type testCase struct {
-		store         store.Store
+		store         memorybox.Store
 		fixtures      []testingstore.Fixture
 		request       string
 		expectedBytes []byte
 		expectedErr   error
 	}
 	fixtures := []testingstore.Fixture{
-		testingstore.NewFixture("something", false, store.Sha256),
-		testingstore.NewFixture("something", true, store.Sha256),
+		testingstore.NewFixture("something", false, memorybox.Sha256),
+		testingstore.NewFixture("something", true, memorybox.Sha256),
 	}
 	table := map[string]testCase{
 		"request missing metafile": {
@@ -148,7 +148,7 @@ func TestMetaFailures(t *testing.T) {
 			expectedErr:   errors.New("0 objects"),
 		},
 		"request with failed search": {
-			store: func() store.Store {
+			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.SearchErrorWith = errors.New("bad search")
 				return store
@@ -158,7 +158,7 @@ func TestMetaFailures(t *testing.T) {
 			expectedErr:   errors.New("bad search"),
 		},
 		"request existing metafile with failed retrieval": {
-			store: func() store.Store {
+			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.GetErrorWith = errors.New("bad get")
 				return store
@@ -172,7 +172,7 @@ func TestMetaFailures(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run("Meta "+name, func(t *testing.T) {
-			err := store.MetaGet(test.store, test.request, bytes.NewBuffer([]byte{}))
+			err := memorybox.MetaGet(test.store, test.request, bytes.NewBuffer([]byte{}))
 			if err == nil {
 				t.Fatal(err)
 			}
@@ -181,7 +181,7 @@ func TestMetaFailures(t *testing.T) {
 			}
 		})
 		t.Run("MetaSet "+name, func(t *testing.T) {
-			err := store.MetaSet(test.store, test.request, "test", "test")
+			err := memorybox.MetaSet(test.store, test.request, "test", "test")
 			if err == nil {
 				t.Fatal(err)
 			}
@@ -190,7 +190,7 @@ func TestMetaFailures(t *testing.T) {
 			}
 		})
 		t.Run("MetaDelete "+name, func(t *testing.T) {
-			err := store.MetaDelete(test.store, test.request, "test")
+			err := memorybox.MetaDelete(test.store, test.request, "test")
 			if err == nil {
 				t.Fatal(err)
 			}

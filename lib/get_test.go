@@ -1,11 +1,11 @@
-package store_test
+package memorybox_test
 
 import (
 	"errors"
 	"github.com/acomagu/bufpipe"
 	"github.com/google/go-cmp/cmp"
-	"github.com/tkellen/memorybox/internal/store"
-	"github.com/tkellen/memorybox/internal/store/testingstore"
+	"github.com/tkellen/memorybox/lib"
+	"github.com/tkellen/memorybox/pkg/testingstore"
 	"io/ioutil"
 	"path"
 	"strings"
@@ -39,8 +39,8 @@ func TestGet(t *testing.T) {
 		expectedErr   error
 	}
 	fixtures := []testingstore.Fixture{
-		testingstore.NewFixture("foo-content", false, store.Sha256),
-		testingstore.NewFixture("bar-content", false, store.Sha256),
+		testingstore.NewFixture("foo-content", false, memorybox.Sha256),
+		testingstore.NewFixture("bar-content", false, memorybox.Sha256),
 	}
 	table := map[string]testCase{
 		"get existing file": {
@@ -103,7 +103,7 @@ func TestGet(t *testing.T) {
 				reader = test.io.reader
 				writer = test.io.writer
 			}
-			err := store.Get(test.store, test.request, writer)
+			err := memorybox.Get(test.store, test.request, writer)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

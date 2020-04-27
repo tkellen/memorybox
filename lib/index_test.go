@@ -1,25 +1,25 @@
-package store_test
+package memorybox_test
 
 import (
 	"errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/tkellen/memorybox/internal/archive"
-	"github.com/tkellen/memorybox/internal/store"
-	"github.com/tkellen/memorybox/internal/store/testingstore"
+	"github.com/tkellen/memorybox/lib"
+	"github.com/tkellen/memorybox/pkg/testingstore"
 	"strings"
 	"testing"
 )
 
 func TestIndex(t *testing.T) {
 	type testCase struct {
-		store         store.Store
+		store         memorybox.Store
 		io            *testIO
 		expectedIndex map[string][]byte
 		expectedErr   error
 	}
 	fixtures := []testingstore.Fixture{
-		testingstore.NewFixture("something", false, store.Sha256),
-		testingstore.NewFixture("something", true, store.Sha256),
+		testingstore.NewFixture("something", false, memorybox.Sha256),
+		testingstore.NewFixture("something", true, memorybox.Sha256),
 	}
 	fixtureIndex := map[string][]byte{
 		strings.TrimPrefix(fixtures[1].Name, archive.MetaFilePrefix): fixtures[1].Content,
@@ -32,7 +32,7 @@ func TestIndex(t *testing.T) {
 			expectedErr:   nil,
 		},
 		"failure to fetch file from store": {
-			store: func() store.Store {
+			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.GetErrorWith = testError
 				return store
@@ -41,7 +41,7 @@ func TestIndex(t *testing.T) {
 			expectedErr:   testError,
 		},
 		"failure to search store for metafiles": {
-			store: func() store.Store {
+			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.SearchErrorWith = testError
 				return store
@@ -50,7 +50,7 @@ func TestIndex(t *testing.T) {
 			expectedErr:   testError,
 		},
 		"failure to read file from store": {
-			store: func() store.Store {
+			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.GetReturnsTimeoutReader = true
 				return store
@@ -62,7 +62,7 @@ func TestIndex(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			actualIndex, err := store.Index(test.store)
+			actualIndex, err := memorybox.Index(test.store)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

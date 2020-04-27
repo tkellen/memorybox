@@ -8,7 +8,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/store/localdiskstore"
+	"github.com/tkellen/memorybox/pkg/localdiskstore"
 	"io"
 	"io/ioutil"
 	"os"
