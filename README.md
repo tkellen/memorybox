@@ -16,7 +16,6 @@ projects will be created to showcase the contents within.
 
 ## Non-Goals
 * Being a generalized point-in-time backup solution for in-progress creations.
-* Making it easy to manage absolutely every digital artifact one has produced.
 * Providing a UI to interact with files that have been stored.
 
 ## Try it

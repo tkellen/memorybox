@@ -1,8 +1,7 @@
 package main
 
 import (
-	"github.com/tkellen/memorybox/pkg"
-	"github.com/tkellen/memorybox/pkg/simplecli"
+	"github.com/tkellen/memorybox/internal/simplecli"
 	"log"
 	"os"
 )
@@ -10,7 +9,7 @@ import (
 func main() {
 	// Ensure timestamp is not included in logging messages.
 	log.SetFlags(0)
-	if err := simplecli.Run(&memorybox.Runner{}, os.Args); err != nil {
+	if err := simplecli.Run(New(log.Printf), os.Args); err != nil {
 		os.Stderr.WriteString(err.Error())
 		os.Exit(1)
 	}

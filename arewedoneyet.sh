@@ -19,6 +19,6 @@ while read package; do
     packageLineCount=$(lineCount ${package})
     printf "%s\t%s\n" ${packageLineCount} ${package#*${packageName}}
     usedLines=$((usedLines+packageLineCount))
-done <<<$(go list ./...)
+done <<<$(go list ./... | grep -v hack)
 
 printf "%s\n\n%s lines remain before you must be done.\n" ${usedLines} $((${maxLines} - ${usedLines}))
