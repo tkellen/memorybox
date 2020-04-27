@@ -1,21 +1,51 @@
-package commands
+package store
 
 import (
 	"context"
 	"github.com/tkellen/memorybox/internal/archive"
-	"github.com/tkellen/memorybox/internal/store"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"io"
+	"log"
 )
 
-// Put persists a requested set of inputs and metadata about them to a Store.
-func Put(
-	store store.Store,
+// Put retrieves and hashes the data at the request string and persists it along
+// with a metadata file to the provided backing store.
+func Put(store Store, hashFn hashFn, request string, logger *log.Logger) error {
+	f, err := archive.New(hashFn, request)
+	if err != nil {
+		return err
+	}
+	return PutFile(store, f, logger)
+}
+
+// PutFile persists an archive.File and its metadata to the provided store.
+func PutFile(store Store, file *archive.File, logger *log.Logger) error {
+	eg := errgroup.Group{}
+	eg.Go(func() error {
+		logger.Printf("%s -> %s", file.Source(), file.Name())
+		defer file.Close()
+		return store.Put(file, file.Name())
+	})
+	eg.Go(func() error {
+		if !store.Exists(archive.MetaFileName(file.Name())) {
+			metaFile := archive.NewMetaFile(file)
+			defer metaFile.Close()
+			return store.Put(metaFile, metaFile.Name())
+		}
+		return nil
+	})
+	return eg.Wait()
+}
+
+// PutMany persists any number of requested inputs to a store with concurrency
+// control in place.
+func PutMany(
+	store Store,
 	hashFn func(source io.Reader) (string, int64, error),
 	requests []string,
 	concurrency int,
-	logger func(format string, v ...interface{}),
+	logger *log.Logger,
 	metadata []string,
 ) error {
 	inlineMeta := len(metadata) > 0
@@ -66,20 +96,21 @@ func Put(
 				// knowing if it is the latest. If someone is manually moving
 				// metafiles it is safe to assume they are fine with this.
 				if f.IsMetaDataFile() {
-					logger("%s -> %s (metafile detected)", name, name)
+					logger.Printf("%s -> %s (metafile detected)", name, name)
+					defer f.Close()
 					return store.Put(f, name)
 				}
 				// If this item is a datafile, see if we already stored it once
 				// before asking to do it again.
 				if store.Exists(name) {
-					logger("%s -> %s (skipped, exists)", item, name)
+					logger.Printf("%s -> %s (skipped, exists)", item, name)
+					defer f.Close()
 					return nil
 				}
 				// If this is a new datafile AND we had a metafile for it in
 				// the same request, the metafile is already in the store now.
 				// It is safe to send the datafile off for persistence now.
-				newDataFiles <- f
-				return nil
+				return PutFile(store, f, logger)
 			})
 		}
 		return nil
@@ -89,24 +120,12 @@ func Put(
 	newFileGroup.Go(func() error {
 		sem := semaphore.NewWeighted(int64(concurrency))
 		for item := range newDataFiles {
-			if err := sem.Acquire(newFileCtx, 2); err != nil {
+			if err := sem.Acquire(newFileCtx, 1); err != nil {
 				return err
 			}
-			item := item // https://golang.org/doc/faq#closures_and_goroutines
-			// Persist datafile.
 			newFileGroup.Go(func() error {
 				defer sem.Release(1)
-				logger("%s -> %s", item.Source(), item.Name())
-				return store.Put(item, item.Name())
-			})
-			// Also persist a metafile, but only if one doesn't already exist.
-			newFileGroup.Go(func() error {
-				defer sem.Release(1)
-				if !store.Exists(archive.MetaFileName(item.Name())) {
-					metaFile := archive.NewMetaFile(item)
-					return store.Put(metaFile, metaFile.Name())
-				}
-				return nil
+				return PutFile(store, item, logger)
 			})
 		}
 		return nil

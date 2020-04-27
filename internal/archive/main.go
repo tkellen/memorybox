@@ -4,10 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/hashicorp/go-retryablehttp"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -86,7 +88,11 @@ func new(hashFn func(io.Reader) (string, int64, error)) *File {
 		meta:   []byte(`{"data":{}}`),
 		hashFn: hashFn,
 		sys: &sys{
-			Get:         http.Get,
+			Get: func() func(url string) (*http.Response, error) {
+				client := retryablehttp.NewClient()
+				client.Logger = log.New(ioutil.Discard, "", 0)
+				return client.Get
+			}(),
 			Open:        os.Open,
 			ReadFile:    ioutil.ReadFile,
 			Stdin:       os.Stdin,
@@ -261,7 +267,7 @@ func (f *File) Name() string {
 
 // IsMetaDataFile checks to see if the immutable "MetaKey" has been set in the
 // File's meta field. This can only be set when the file is created by calling
-// NewMetaFile with a data file or New with an input source whose data IS valid
+// NewMetaFile with a data file or New with an input source whose data is valid
 // memorybox metadata.
 func (f *File) IsMetaDataFile() bool {
 	return gjson.GetBytes(f.meta, MetaKey).Exists()

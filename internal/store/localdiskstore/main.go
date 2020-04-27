@@ -1,4 +1,4 @@
-package store
+package localdiskstore
 
 import (
 	"fmt"
@@ -9,31 +9,31 @@ import (
 	"path/filepath"
 )
 
-// LocalDiskStore implements store.Store backed by local disk.
-type LocalDiskStore struct {
+// Store implements store.Store backed by local disk.
+type Store struct {
 	RootPath string
 }
 
-// NewLocalDiskStore returns a reference to a Store instance.
-func NewLocalDiskStore(rootPath string) *LocalDiskStore {
+// New returns a reference to a Store instance.
+func New(rootPath string) *Store {
 	expanded, _ := homedir.Expand(rootPath)
-	return &LocalDiskStore{RootPath: expanded}
+	return &Store{RootPath: expanded}
 }
 
-// NewLocalDiskStoreFromConfig instantiates a Store using configuration values that were
+// NewFromConfig instantiates a Store using configuration values that were
 // likely sourced from a configuration file target.
-func NewLocalDiskStoreFromConfig(config map[string]string) *LocalDiskStore {
-	return NewLocalDiskStore(config["home"])
+func NewFromConfig(config map[string]string) *Store {
+	return New(config["home"])
 }
 
 // String returns a human friendly representation of the Store.
-func (s *LocalDiskStore) String() string {
+func (s *Store) String() string {
 	return fmt.Sprintf("LocalDiskStore: %s", s.RootPath)
 }
 
 // Put writes the content of an io.Reader to local disk, naming the file with
 // a hash of its contents.
-func (s *LocalDiskStore) Put(source io.Reader, hash string) error {
+func (s *Store) Put(source io.Reader, hash string) error {
 	if err := os.MkdirAll(s.RootPath, 0755); err != nil {
 		return fmt.Errorf("could not create %s: %w", s.RootPath, err)
 	}
@@ -50,12 +50,12 @@ func (s *LocalDiskStore) Put(source io.Reader, hash string) error {
 }
 
 // Get finds an object in storage by name and returns an io.ReadCloser for it.
-func (s *LocalDiskStore) Get(request string) (io.ReadCloser, error) {
+func (s *Store) Get(request string) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.RootPath, request))
 }
 
 // Search finds matching files in storage by prefix.
-func (s *LocalDiskStore) Search(search string) ([]string, error) {
+func (s *Store) Search(search string) ([]string, error) {
 	matches := []string{}
 	results, err := filepath.Glob(path.Join(s.RootPath, search) + "*")
 	if err != nil {
@@ -68,7 +68,7 @@ func (s *LocalDiskStore) Search(search string) ([]string, error) {
 }
 
 // Exists determines if an object exists in the local store already.
-func (s *LocalDiskStore) Exists(search string) bool {
+func (s *Store) Exists(search string) bool {
 	_, err := os.Stat(path.Join(s.RootPath, search))
 	return err == nil
 }

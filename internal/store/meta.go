@@ -1,14 +1,13 @@
-package commands
+package store
 
 import (
 	"fmt"
 	"github.com/tkellen/memorybox/internal/archive"
-	"github.com/tkellen/memorybox/internal/store"
 	"io"
 )
 
 // MetaGet gets a metadata file from a defined store.
-func MetaGet(store store.Store, hash string, sink io.Writer) error {
+func MetaGet(store Store, hash string, sink io.Writer) error {
 	metaFile, findErr := findMeta(store, hash)
 	if findErr != nil {
 		return findErr
@@ -21,7 +20,7 @@ func MetaGet(store store.Store, hash string, sink io.Writer) error {
 }
 
 // MetaSet adds a key to a metadata file and persists it to the store.
-func MetaSet(store store.Store, search string, key string, value interface{}) error {
+func MetaSet(store Store, search string, key string, value interface{}) error {
 	metaFile, findErr := findMeta(store, search)
 	if findErr != nil {
 		return findErr
@@ -31,7 +30,7 @@ func MetaSet(store store.Store, search string, key string, value interface{}) er
 }
 
 // MetaDelete removes a key from a metadata file and persists it to the store.
-func MetaDelete(store store.Store, search string, key string) error {
+func MetaDelete(store Store, search string, key string) error {
 	metaFile, findErr := findMeta(store, search)
 	if findErr != nil {
 		return findErr
@@ -40,7 +39,7 @@ func MetaDelete(store store.Store, search string, key string) error {
 	return store.Put(metaFile, metaFile.Name())
 }
 
-func findMeta(store store.Store, search string) (*archive.File, error) {
+func findMeta(store Store, search string) (*archive.File, error) {
 	// First determine if the file to annotate even exists.
 	matches, searchErr := store.Search(search)
 	if searchErr != nil {

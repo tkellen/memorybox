@@ -1,13 +1,12 @@
-// While this does produce good code coverage, this suite would be better if it
-// mocked Runner.Commands and validated that the right values were making it
-// into the commands.
-package main
+package cli_test
 
 import (
 	"errors"
 	"fmt"
+	"github.com/tkellen/memorybox/internal/cli"
 	"github.com/tkellen/memorybox/internal/simplecli"
 	"io/ioutil"
+	"log"
 	"os"
 	"strings"
 	"testing"
@@ -24,9 +23,8 @@ targets:
 `
 const badConfig = "[notyaml]"
 
-var silentLogger = func(format string, v ...interface{}) {}
-
 func TestRunner(t *testing.T) {
+	silentLogger := log.New(ioutil.Discard, "", 0)
 	// make a good / bad configuration file to use for each command
 	configs := map[string]string{
 		"good": goodConfig,
@@ -139,7 +137,7 @@ func TestRunner(t *testing.T) {
 						t.Fatal(err)
 					}
 					defer os.RemoveAll(tempDir)
-					runner := New(silentLogger)
+					runner := cli.New(silentLogger)
 					(*runner).PathConfig = configPath
 					runErr := simplecli.Run(runner, args)
 					if runErr != nil && expectedErr == nil {

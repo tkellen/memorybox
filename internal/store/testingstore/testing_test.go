@@ -1,14 +1,10 @@
-// These are integration tests which validate the minimal domain specific error
-// handling this store layers over the golang standard libraries for os-agnostic
-// path resolution and disk io. Mocking out the filesystem for this (as seen in
-// the archive package) seemed like overkill.
-package store_test
+package testingstore_test
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/store"
+	"github.com/tkellen/memorybox/internal/store/testingstore"
 	"io"
 	"io/ioutil"
 	"path/filepath"
@@ -17,8 +13,8 @@ import (
 	"testing/iotest"
 )
 
-func TestTestingStore_String(t *testing.T) {
-	store := store.NewTestingStore([]store.TestingStoreFixture{})
+func TestStore_String(t *testing.T) {
+	store := testingstore.New([]testingstore.Fixture{})
 	actual := store.String()
 	expected := fmt.Sprintf("TestingStore")
 	if expected != actual {
@@ -26,8 +22,8 @@ func TestTestingStore_String(t *testing.T) {
 	}
 }
 
-func TestTestingStore_Put(t *testing.T) {
-	store := store.NewTestingStore([]store.TestingStoreFixture{})
+func TestStore_Put(t *testing.T) {
+	store := testingstore.New([]testingstore.Fixture{})
 	filename := "test"
 	expected := []byte(filename)
 	putErr := store.Put(bytes.NewReader(expected), filename)
@@ -40,20 +36,20 @@ func TestTestingStore_Put(t *testing.T) {
 	}
 }
 
-func TestTestingStore_Put_BadReader(t *testing.T) {
-	store := store.NewTestingStore([]store.TestingStoreFixture{})
+func TestStore_Put_BadReader(t *testing.T) {
+	store := testingstore.New([]testingstore.Fixture{})
 	putErr := store.Put(iotest.TimeoutReader(bytes.NewReader([]byte("test"))), "test")
 	if putErr == nil {
 		t.Fatal("expected put error")
 	}
 }
 
-func TestTestingStore_Get(t *testing.T) {
-	fixture := store.TestingStoreFixture{
+func TestStore_Get(t *testing.T) {
+	fixture := testingstore.Fixture{
 		Name:    "test",
 		Content: []byte("test"),
 	}
-	store := store.NewTestingStore([]store.TestingStoreFixture{fixture})
+	store := testingstore.New([]testingstore.Fixture{fixture})
 	data, getErr := store.Get(fixture.Name)
 	defer data.Close()
 	if getErr != nil {
@@ -68,20 +64,20 @@ func TestTestingStore_Get(t *testing.T) {
 	}
 }
 
-func TestTestingStore_GetMissing(t *testing.T) {
-	store := store.NewTestingStore([]store.TestingStoreFixture{})
+func TestStore_GetMissing(t *testing.T) {
+	store := testingstore.New([]testingstore.Fixture{})
 	_, err := store.Get("anything")
 	if err == nil {
 		t.Fatal("expected error on missing")
 	}
 }
 
-func TestTestingStore_Exists(t *testing.T) {
-	fixture := store.TestingStoreFixture{
+func TestStore_Exists(t *testing.T) {
+	fixture := testingstore.Fixture{
 		Name:    "test",
 		Content: []byte("test"),
 	}
-	store := store.NewTestingStore([]store.TestingStoreFixture{fixture})
+	store := testingstore.New([]testingstore.Fixture{fixture})
 	if !store.Exists(fixture.Name) {
 		t.Fatal("expected boolean true for file that exists")
 	}
@@ -90,13 +86,13 @@ func TestTestingStore_Exists(t *testing.T) {
 	}
 }
 
-func TestTestingStore_Search(t *testing.T) {
-	fixtures := []store.TestingStoreFixture{
+func TestStore_Search(t *testing.T) {
+	fixtures := []testingstore.Fixture{
 		{Name: "foo", Content: []byte("foo")},
 		{Name: "bar", Content: []byte("baz")},
 		{Name: "bar", Content: []byte("baz")},
 	}
-	store := store.NewTestingStore(fixtures)
+	store := testingstore.New(fixtures)
 	reader := func(content []byte) io.ReadCloser {
 		return ioutil.NopCloser(bytes.NewReader(content))
 	}

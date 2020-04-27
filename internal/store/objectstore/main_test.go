@@ -1,5 +1,5 @@
 // These are unit tests which validate nothing more than how the abstraction of
-// the ObjectStore interface maps calls to *minio.Client.
+// the Store interface maps calls to *minio.Client.
 //
 // I could actually *run* minio during testing. Here is how it is done:
 //
@@ -12,14 +12,14 @@
 //
 // Honestly, the value of spending time writing these tests is, by analogy,
 // equivalent to knitting a hat vs buying one. Whatever. Here we go.
-package store_test
+package objectstore_test
 
 import (
 	"bytes"
 	"errors"
 	"fmt"
 	"github.com/minio/minio-go/v6"
-	"github.com/tkellen/memorybox/internal/store"
+	"github.com/tkellen/memorybox/internal/store/objectstore"
 	"io"
 	"io/ioutil"
 	"testing"
@@ -45,9 +45,9 @@ func (s3 *s3mock) ListObjects(bucket string, prefix string, recursive bool, done
 	return s3.listObjects(bucket, prefix, recursive, doneCh)
 }
 
-func TestNewObjectStoreFromConfig(t *testing.T) {
+func TestNewFromConfig(t *testing.T) {
 	expected := "bucket-name"
-	actual := store.NewObjectStoreFromConfig(map[string]string{
+	actual := objectstore.NewFromConfig(map[string]string{
 		"home": expected,
 	})
 	if expected != actual.Bucket {
@@ -55,9 +55,9 @@ func TestNewObjectStoreFromConfig(t *testing.T) {
 	}
 }
 
-func TestObjectStore_String(t *testing.T) {
+func TestStore_String(t *testing.T) {
 	bucket := "test"
-	store := store.NewObjectStore("test", nil)
+	store := objectstore.New("test", nil)
 	actual := store.String()
 	expected := fmt.Sprintf("ObjectStore: %s", bucket)
 	if expected != actual {
@@ -65,12 +65,12 @@ func TestObjectStore_String(t *testing.T) {
 	}
 }
 
-func TestObjectStore_Put_Success(t *testing.T) {
+func TestStore_Put_Success(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedReader := bytes.NewReader([]byte("test"))
 	expectedFilename := "test"
-	store.NewObjectStore(expectedBucket, &s3mock{
+	objectstore.New(expectedBucket, &s3mock{
 		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -91,13 +91,13 @@ func TestObjectStore_Put_Success(t *testing.T) {
 	}
 }
 
-func TestObjectStore_Put_Failure(t *testing.T) {
+func TestStore_Put_Failure(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedReader := bytes.NewReader([]byte("test"))
 	expectedFilename := "test"
 	expectedError := errors.New("failed")
-	err := store.NewObjectStore(expectedBucket, &s3mock{
+	err := objectstore.New(expectedBucket, &s3mock{
 		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -120,11 +120,11 @@ func TestObjectStore_Put_Failure(t *testing.T) {
 	}
 }
 
-func TestObjectStore_Get(t *testing.T) {
+func TestStore_Get(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedFilename := "test"
-	store.NewObjectStore(expectedBucket, &s3mock{
+	objectstore.New(expectedBucket, &s3mock{
 		getObject: func(bucket string, key string, options minio.GetObjectOptions) (*minio.Object, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -141,11 +141,11 @@ func TestObjectStore_Get(t *testing.T) {
 	}
 }
 
-func TestObjectStore_Exists(t *testing.T) {
+func TestStore_Exists(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedFilename := "test"
-	store.NewObjectStore(expectedBucket, &s3mock{
+	objectstore.New(expectedBucket, &s3mock{
 		statObject: func(bucket string, key string, options minio.StatObjectOptions) (minio.ObjectInfo, error) {
 			called = true
 			if expectedBucket != bucket {
@@ -162,11 +162,11 @@ func TestObjectStore_Exists(t *testing.T) {
 	}
 }
 
-func TestObjectStore_Search(t *testing.T) {
+func TestStore_Search(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedPrefix := "test"
-	store.NewObjectStore(expectedBucket, &s3mock{
+	objectstore.New(expectedBucket, &s3mock{
 		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
 			called = true
 			results := make(chan minio.ObjectInfo)

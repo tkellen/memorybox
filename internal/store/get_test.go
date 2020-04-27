@@ -1,15 +1,29 @@
-package commands_test
+package store_test
 
 import (
 	"errors"
 	"github.com/acomagu/bufpipe"
 	"github.com/google/go-cmp/cmp"
-	"github.com/tkellen/memorybox/commands"
 	"github.com/tkellen/memorybox/internal/store"
+	"github.com/tkellen/memorybox/internal/store/testingstore"
 	"io/ioutil"
+	"path"
 	"strings"
 	"testing"
 )
+
+func fixtures(tempDir string, fixtures []testingstore.Fixture) ([]string, error) {
+	files := make([]string, len(fixtures))
+	for index, fixture := range fixtures {
+		filepath := path.Join(tempDir, fixture.Name)
+		err := ioutil.WriteFile(filepath, fixture.Content, 0644)
+		if err != nil {
+			return nil, err
+		}
+		files[index] = filepath
+	}
+	return files, nil
+}
 
 func TestGet(t *testing.T) {
 	type testIO struct {
@@ -17,35 +31,35 @@ func TestGet(t *testing.T) {
 		writer *bufpipe.PipeWriter
 	}
 	type testCase struct {
-		store         *store.TestingStore
+		store         *testingstore.Store
 		io            *testIO
-		fixtures      []store.TestingStoreFixture
+		fixtures      []testingstore.Fixture
 		request       string
 		expectedBytes []byte
 		expectedErr   error
 	}
-	fixtures := []store.TestingStoreFixture{
-		store.NewTestingStoreFixture("foo-content", false, commands.Sha256),
-		store.NewTestingStoreFixture("bar-content", false, commands.Sha256),
+	fixtures := []testingstore.Fixture{
+		testingstore.NewFixture("foo-content", false, store.Sha256),
+		testingstore.NewFixture("bar-content", false, store.Sha256),
 	}
 	table := map[string]testCase{
 		"get existing file": {
-			store:         store.NewTestingStore(fixtures),
+			store:         testingstore.New(fixtures),
 			fixtures:      fixtures,
 			request:       fixtures[0].Name,
 			expectedBytes: fixtures[0].Content,
 			expectedErr:   nil,
 		},
 		"get missing file": {
-			store:         store.NewTestingStore(fixtures),
+			store:         testingstore.New(fixtures),
 			fixtures:      fixtures,
 			request:       "missing",
 			expectedBytes: nil,
 			expectedErr:   errors.New("0 objects"),
 		},
 		"get with failed search": {
-			store: func() *store.TestingStore {
-				store := store.NewTestingStore(fixtures)
+			store: func() *testingstore.Store {
+				store := testingstore.New(fixtures)
 				store.SearchErrorWith = errors.New("bad search")
 				return store
 			}(),
@@ -55,8 +69,8 @@ func TestGet(t *testing.T) {
 			expectedErr:   errors.New("bad search"),
 		},
 		"get existing file with failed retrieval": {
-			store: func() *store.TestingStore {
-				store := store.NewTestingStore(fixtures)
+			store: func() *testingstore.Store {
+				store := testingstore.New(fixtures)
 				store.GetErrorWith = errors.New("bad get")
 				return store
 			}(),
@@ -66,7 +80,7 @@ func TestGet(t *testing.T) {
 			expectedErr:   errors.New("bad get"),
 		},
 		"get existing file with failed copy to sink": {
-			store: store.NewTestingStore(fixtures),
+			store: testingstore.New(fixtures),
 			io: func() *testIO {
 				reader, writer := bufpipe.New(nil)
 				reader.Close()
@@ -89,7 +103,7 @@ func TestGet(t *testing.T) {
 				reader = test.io.reader
 				writer = test.io.writer
 			}
-			err := commands.Get(test.store, test.request, writer)
+			err := store.Get(test.store, test.request, writer)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

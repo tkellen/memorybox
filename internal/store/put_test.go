@@ -1,63 +1,50 @@
-package commands_test
+package store_test
 
 import (
-	"github.com/tkellen/memorybox/commands"
 	"github.com/tkellen/memorybox/internal/archive"
 	"github.com/tkellen/memorybox/internal/store"
+	"github.com/tkellen/memorybox/internal/store/testingstore"
 	"io/ioutil"
+	"log"
 	"os"
-	"path"
 	"strings"
 	"testing"
 )
 
-func noopLogger(format string, v ...interface{}) {}
-func fixtures(tempDir string, fixtures []store.TestingStoreFixture) ([]string, error) {
-	files := make([]string, len(fixtures))
-	for index, fixture := range fixtures {
-		filepath := path.Join(tempDir, fixture.Name)
-		err := ioutil.WriteFile(filepath, fixture.Content, 0644)
-		if err != nil {
-			return nil, err
-		}
-		files[index] = filepath
-	}
-	return files, nil
-}
-
-func TestPutSuccess(t *testing.T) {
+func TestPutManySuccess(t *testing.T) {
+	silentLogger := log.New(ioutil.Discard, "", 0)
 	type testCase struct {
-		store                    *store.TestingStore
-		fixtures                 []store.TestingStoreFixture
+		store                    store.Store
+		fixtures                 []testingstore.Fixture
 		concurrency              int
 		expectedStoredFilesCount int
 		expectedErr              error
 	}
-	hashFn := commands.Sha256
+	hashFn := store.Sha256
 	table := map[string]testCase{
 		"store two data files": {
-			store: &store.TestingStore{Data: map[string][]byte{}},
-			fixtures: []store.TestingStoreFixture{
-				store.NewTestingStoreFixture("foo-content", false, hashFn),
-				store.NewTestingStoreFixture("bar-content", false, hashFn),
+			store: &testingstore.Store{Data: map[string][]byte{}},
+			fixtures: []testingstore.Fixture{
+				testingstore.NewFixture("foo-content", false, hashFn),
+				testingstore.NewFixture("bar-content", false, hashFn),
 			},
 			expectedStoredFilesCount: 4, // 2x fixtures, one meta file for each
 			concurrency:              2,
 		},
 		"store one meta file and one data file": {
-			store: &store.TestingStore{Data: map[string][]byte{}},
-			fixtures: []store.TestingStoreFixture{
-				store.NewTestingStoreFixture("foo-content", false, hashFn),
-				store.NewTestingStoreFixture("{\"key\":\"value\"}", true, hashFn),
+			store: &testingstore.Store{Data: map[string][]byte{}},
+			fixtures: []testingstore.Fixture{
+				testingstore.NewFixture("foo-content", false, hashFn),
+				testingstore.NewFixture("{\"key\":\"value\"}", true, hashFn),
 			},
 			expectedStoredFilesCount: 3, // one content, two meta
 			concurrency:              2,
 		},
 		"store the same file multiple times": {
-			store: &store.TestingStore{Data: map[string][]byte{}},
-			fixtures: []store.TestingStoreFixture{
-				store.NewTestingStoreFixture("foo-content", false, hashFn),
-				store.NewTestingStoreFixture("foo-content", false, hashFn),
+			store: &testingstore.Store{Data: map[string][]byte{}},
+			fixtures: []testingstore.Fixture{
+				testingstore.NewFixture("foo-content", false, hashFn),
+				testingstore.NewFixture("foo-content", false, hashFn),
 			},
 			expectedStoredFilesCount: 2, // one content, one meta
 			concurrency:              2,
@@ -78,7 +65,7 @@ func TestPutSuccess(t *testing.T) {
 			}
 			// Run put twice, it should be idempotent.
 			for i := 0; i < 2; i++ {
-				err := commands.Put(test.store, hashFn, inputs, test.concurrency, noopLogger, []string{})
+				err := store.PutMany(test.store, hashFn, inputs, test.concurrency, silentLogger, []string{})
 				if err != nil && test.expectedErr == nil {
 					t.Fatal(err)
 				}
@@ -100,7 +87,7 @@ func TestPutSuccess(t *testing.T) {
 				}
 			}
 			// Ensure no unexpected files were persisted.
-			actualStoredFileCount := len(test.store.Data)
+			actualStoredFileCount := len(test.store.(*testingstore.Store).Data)
 			if actualStoredFileCount != test.expectedStoredFilesCount {
 				t.Fatalf("expected %d files in store, saw %d", test.expectedStoredFilesCount, actualStoredFileCount)
 			}
@@ -108,8 +95,9 @@ func TestPutSuccess(t *testing.T) {
 	}
 }
 
-func TestPutFail(t *testing.T) {
-	err := commands.Put(&store.TestingStore{}, commands.Sha256, []string{"nope"}, 2, noopLogger, []string{})
+func TestPutManyFail(t *testing.T) {
+	silentLogger := log.New(ioutil.Discard, "", 0)
+	err := store.PutMany(&testingstore.Store{}, store.Sha256, []string{"nope"}, 2, silentLogger, []string{})
 	if err == nil {
 		t.Fatal("expected error")
 	}

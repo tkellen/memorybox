@@ -1,4 +1,4 @@
-# memorybox ![build and test](https://github.com/tkellen/memorybox/workflows/build%20and%20test/badge.svg?branch=master)
+# memorybox ![build and test](https://github.com/tkellen/memorybox/workflows/build%20and%20test/badge.svg?branch=master) [![Coverage Status](https://coveralls.io/repos/github/tkellen/memorybox/badge.svg?branch=master)](https://coveralls.io/github/tkellen/memorybox?branch=master)
 > easy to understand digital archival tool
 
 # Introduction

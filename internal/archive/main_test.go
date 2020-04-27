@@ -57,13 +57,6 @@ func TestFile_NewAndNewFromReader(t *testing.T) {
 			expectedSource:         "ioutil.nopCloser",
 			expectedBytes:          []byte("test"),
 		},
-		"fail on inability to make http request for input url": {
-			hashFn:                 identityHash,
-			input:                  "http://that.is.not.a.valid.url",
-			expectedIsMetaDataFile: false,
-			expectedSource:         "http://that.is.not.a.valid.url",
-			expectedErr:            errors.New("no such host"),
-		},
 		"fail on invalid file": {
 			hashFn:                 identityHash,
 			input:                  "/nope/nope/nope/nope/nope",

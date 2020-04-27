@@ -1,9 +1,8 @@
-package main
+package cli
 
 import (
 	"fmt"
 	"github.com/docopt/docopt-go"
-	"github.com/tkellen/memorybox/commands"
 	"github.com/tkellen/memorybox/internal/configfile"
 	"github.com/tkellen/memorybox/internal/store"
 	"io"
@@ -61,48 +60,23 @@ type Flags struct {
 
 // Runner implements simplecli.Runner in the context of memorybox.
 type Runner struct {
-	Logger     func(format string, v ...interface{})
+	Logger     *log.Logger
 	ConfigFile *configfile.ConfigFile
 	Flags      Flags
 	Store      store.Store
 	HashFn     func(source io.Reader) (string, int64, error)
 	PathConfig string
 	PathTemp   string
-	Commands   *Commands
 }
 
 // New creates a runner with all the required configuration.
-func New(logger func(format string, v ...interface{})) *Runner {
+func New(logger *log.Logger) *Runner {
 	return &Runner{
 		Logger:     logger,
-		HashFn:     commands.Sha256,
+		HashFn:     store.Sha256,
 		PathConfig: "~/.memorybox/config",
 		PathTemp:   path.Join(os.TempDir(), "memorybox"),
-		Commands: &Commands{
-			Get:          commands.Get,
-			Put:          commands.Put,
-			Import:       commands.Import,
-			ConfigShow:   commands.ConfigShow,
-			ConfigSet:    commands.ConfigSet,
-			ConfigDelete: commands.ConfigDelete,
-			MetaGet:      commands.MetaGet,
-			MetaSet:      commands.MetaSet,
-			MetaDelete:   commands.MetaDelete,
-		},
 	}
-}
-
-// Commands defines a mockable struct for usage by the CLI.
-type Commands struct {
-	Get          func(store.Store, string, io.Writer) error
-	Put          func(store.Store, func(source io.Reader) (string, int64, error), []string, int, func(format string, v ...interface{}), []string) error
-	Import       func(store.Store, func(source io.Reader) (string, int64, error), []string, int, func(format string, v ...interface{})) error
-	ConfigShow   func(*configfile.ConfigFile, func(format string, v ...interface{})) error
-	ConfigSet    func(*configfile.ConfigFile, string, string, string) error
-	ConfigDelete func(*configfile.ConfigFile, string, string) error
-	MetaGet      func(store.Store, string, io.Writer) error
-	MetaSet      func(store.Store, string, string, interface{}) error
-	MetaDelete   func(store.Store, string, string) error
 }
 
 // ConfigPath returns the canonical location of the memorybox config file.
@@ -134,8 +108,8 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 	// Populate flags struct with our command line options.
 	err = opts.Bind(&run.Flags)
 	// Turn logger off unless user has requested it.
-	if !run.Flags.Debug {
-		run.Logger = func(format string, v ...interface{}) {}
+	if run.Flags.Debug {
+		run.Logger.SetOutput(os.Stderr)
 	}
 	configFile, configFileErr := configfile.NewConfigFile(configData)
 	if configFileErr != nil {
@@ -158,31 +132,38 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 func (run *Runner) Dispatch() error {
 	f := run.Flags
 	if f.Put {
-		return run.Commands.Put(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
+		return store.PutMany(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
 	}
 	if f.Import {
-		return run.Commands.Import(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
+		return store.Import(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
 	}
 	if f.Get {
-		return run.Commands.Get(run.Store, run.Flags.Hash, os.Stdout)
+		return store.Get(run.Store, run.Flags.Hash, os.Stdout)
 	}
 	if f.Config {
 		if f.Delete {
-			return run.Commands.ConfigDelete(run.ConfigFile, run.Flags.Target, run.Flags.Key)
+			if run.Flags.Target != "" {
+				run.ConfigFile.Target(run.Flags.Target).Delete(run.Flags.Key)
+				return nil
+			}
+			run.ConfigFile.Delete(run.Flags.Target)
+			return nil
 		}
 		if f.Set {
-			return run.Commands.ConfigSet(run.ConfigFile, run.Flags.Target, run.Flags.Key, run.Flags.Value)
+			run.ConfigFile.Target(run.Flags.Target).Set(run.Flags.Key, run.Flags.Value)
+			return nil
 		}
-		return run.Commands.ConfigShow(run.ConfigFile, log.Printf)
+		log.Printf("%s", run.ConfigFile)
+		return nil
 	}
 	if f.Meta {
 		if f.Delete {
-			return run.Commands.MetaDelete(run.Store, run.Flags.Hash, run.Flags.Key)
+			return store.MetaDelete(run.Store, run.Flags.Hash, run.Flags.Key)
 		}
 		if f.Set {
-			return run.Commands.MetaSet(run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
+			return store.MetaSet(run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
 		}
-		return run.Commands.MetaGet(run.Store, run.Flags.Hash, os.Stdout)
+		return store.MetaGet(run.Store, run.Flags.Hash, os.Stdout)
 	}
 	return fmt.Errorf("command not implemented")
 }

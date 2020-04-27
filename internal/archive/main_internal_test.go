@@ -59,6 +59,13 @@ func TestFile_init(t *testing.T) {
 			},
 			expectedErr: nil,
 		},
+		"fail on inability to make http request for input url": {
+			input: "http://that.is.not.a.valid.url",
+			setup: func(sys *sys) {
+				sys.Get = http.Get
+			},
+			expectedErr: errors.New("no such host"),
+		},
 		"fail on non-200 http response from url input": {
 			input: "http://totally.legit",
 			setup: func(sys *sys) {

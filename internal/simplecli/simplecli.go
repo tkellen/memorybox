@@ -12,7 +12,7 @@ import (
 )
 
 // Runner defines an interface for the lifecycle of a command line program.
-type Runner interface {
+type CLIRunner interface {
 	// ConfigPath should return a path to a configuration file to read.
 	ConfigPath() string
 	// TempPath should return a path to a temporary directory the application
@@ -41,7 +41,7 @@ type Runner interface {
 // 5. Removing the temporary directory and all of its contents before exiting.
 // 6. If running the application changed the configuration, persisting to the
 //    configuration file.
-func Run(cli Runner, args []string) error {
+func Run(cli CLIRunner, args []string) error {
 	// Ensure temporary directory exists.
 	if err := os.MkdirAll(cli.TempPath(), 0755); err != nil {
 		return err

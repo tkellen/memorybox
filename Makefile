@@ -15,7 +15,7 @@ test:
 	go test -v ./... -coverprofile /dev/null
 
 build: fmt lint vet test
-	go build
+	go build ./...
 
 run:
 	go run ./...

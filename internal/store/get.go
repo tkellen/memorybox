@@ -1,13 +1,12 @@
-package commands
+package store
 
 import (
 	"fmt"
-	"github.com/tkellen/memorybox/internal/store"
 	"io"
 )
 
 // Get retrieves an object from a Store by hash and copies it to a sink.
-func Get(store store.Store, hash string, sink io.Writer) error {
+func Get(store Store, hash string, sink io.Writer) error {
 	matches, searchErr := store.Search(hash)
 	if searchErr != nil {
 		return fmt.Errorf("get: %w", searchErr)
