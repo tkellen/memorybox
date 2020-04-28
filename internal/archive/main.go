@@ -144,9 +144,19 @@ func NewMetaFile(source *File) *File {
 	return f
 }
 
-// MetaFileName calculates a metafile name for a data file.
-func MetaFileName(source string) string {
+// ToMetaFileName calculates a metafile name for a data file.
+func ToMetaFileName(source string) string {
 	return MetaFilePrefix + source
+}
+
+// ToDataFileName calculates a datafile name from a metafile name.
+func ToDataFileName(source string) string {
+	return strings.TrimPrefix(source, MetaFilePrefix)
+}
+
+// IsMetaFileName determines if a given source string is named like a metafile.
+func IsMetaFileName(source string) bool {
+	return strings.HasPrefix(source, MetaFilePrefix)
 }
 
 // init prepares the internal state of a File for consumption.

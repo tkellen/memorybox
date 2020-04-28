@@ -18,24 +18,19 @@ type importEntry struct {
 	Metadata string
 }
 
-// Import performs a mass put / annotation operation on any number of input
-// manifest files formatted like so:
+// Import performs a mass put / annotation operation on any number of manifest
+// files, formatted like so:
 // ```
 // path/to/file.jpg {"title":"some file on my machine"}
 // https://images.com/photo.jpg {"title":"some photo on the internet"}
 // https://images.com/audio.mp3 {"title":"some mp3 on the internet"}
 // ```
-// It will intelligently de-dupe manifests and remove entries that already
-// appear in the store.
-func Import(
-	store Store,
-	hashFn hashFn,
-	requests []string,
-	concurrency int,
-	logger *log.Logger,
-) error {
+// Import will intelligently de-dupe manifests and remove entries that already
+// appear in the store as being sourced from the filepath or URL in the manifest
+// file.
+func Import(ctx context.Context, store Store, hashFn hashFn, requests []string, concurrency int, logger *log.Logger) error {
 	// Get all metadata entries from the store.
-	index, indexErr := Index(store)
+	index, indexErr := index(ctx, store, concurrency, logger, false)
 	if indexErr != nil {
 		return indexErr
 	}
@@ -46,7 +41,7 @@ func Import(
 		sourceIndex[source] = true
 	}
 	// Read all import files concurrently.
-	imports, collectErr := collectImports(requests)
+	imports, collectErr := collectImports(ctx, requests)
 	if collectErr != nil {
 		return collectErr
 	}
@@ -76,17 +71,17 @@ func Import(
 		putMetadatas = append(putMetadatas, entry.Metadata)
 	}
 	logger.Printf("queued: %d, duplicates removed: %d, existing removed: %d", len(putRequests), dupeImportCount, inStoreAlreadyCount)
-	return PutMany(store, hashFn, putRequests, concurrency, logger, putMetadatas)
+	return PutMany(ctx, store, hashFn, putRequests, concurrency, logger, putMetadatas)
 }
 
 // collectImports reads all input files supplied to the import function
 // concurrently, aggregating them into a map keyed by their request
 // string.
-func collectImports(requests []string) ([]importEntry, error) {
+func collectImports(ctx context.Context, requests []string) ([]importEntry, error) {
 	// Start a collector goroutine to receive all entries.
 	entries := make(chan importEntry)
 	// Process every import file concurrently.
-	process := errgroup.Group{}
+	process, _ := errgroup.WithContext(ctx)
 	for _, item := range requests {
 		process.Go(func() error {
 			file, err := os.Open(item)

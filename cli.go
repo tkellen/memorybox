@@ -18,6 +18,7 @@ const usageTemplate = `Usage:
   %[1]s [-d] get <target> <hash>
   %[1]s [--concurrency=<num> -d] put <target> <input>...
   %[1]s [--concurrency=<num> -d] import <target> <input>...
+  %[1]s [-d] index <target>
   %[1]s [-d] meta <target> <hash> [set <key> <value> | delete [<key>]]
   %[1]s [-d] config [set <target> <key> <value> | delete <target> [<key>]]
 
@@ -52,6 +53,7 @@ type Flags struct {
 	Value       string
 	Put         bool
 	Import      bool
+	Index       bool
 	Get         bool
 	Meta        bool
 	Input       []string

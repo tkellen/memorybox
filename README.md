@@ -29,10 +29,3 @@ go build && ./memorybox
 * [IPFS](https://ipfs.io/)
 * [Scuttlebutt](https://scuttlebutt.nz/)
 * [Dat](https://dat.foundation/)
-
-## Final Thoughts
-At some level, this project is essentially an over-engineered version of this:
-```
-aws s3 cp file s3://bucket/sha256-$((sha256sum < file) | cut -d' ' -f1)
-```
-...or, the '57 Chevy version of Perkeep.
