@@ -1,6 +1,7 @@
 package memorybox
 
 import (
+	"context"
 	"encoding/hex"
 	"fmt"
 	hash "github.com/minio/sha256-simd"
@@ -12,10 +13,10 @@ import (
 
 // Store defines a storage engine that can persist and retrieve content.
 type Store interface {
-	Exists(string) bool
-	Get(string) (io.ReadCloser, error)
-	Put(io.Reader, string) error
-	Search(string) ([]string, error)
+	Exists(context.Context, string) bool
+	Get(context.Context, string) (io.ReadCloser, error)
+	Put(context.Context, io.Reader, string) error
+	Search(context.Context, string) ([]string, error)
 	String() string
 }
 
@@ -31,8 +32,8 @@ func Sha256(source io.Reader) (string, int64, error) {
 	return hex.EncodeToString(hash.Sum(nil)) + "-sha256", size, nil
 }
 
-// New creates the appropriate type of store given the configuration supplied.
-func New(config map[string]string) (Store, error) {
+// NewStore creates the appropriate type of store given the configuration supplied.
+func NewStore(config map[string]string) (Store, error) {
 	storeType := config["type"]
 	if storeType == "localDisk" {
 		return localdiskstore.NewFromConfig(config), nil

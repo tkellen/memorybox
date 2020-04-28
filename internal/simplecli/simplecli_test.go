@@ -31,11 +31,13 @@ func (run testRunner) TempPath() string {
 func (run testRunner) Configure(args []string, reader io.Reader) error {
 	return run.startup(args, reader)
 }
-func (run testRunner) Shutdown(writer io.Writer) error {
+func (run testRunner) SaveConfig(writer io.Writer) error {
 	return run.saveConfig(writer)
 }
 func (run testRunner) Dispatch() error {
 	return nil
+}
+func (run testRunner) Terminate() {
 }
 
 func newTestRunner() *testRunner {
@@ -130,7 +132,7 @@ func TestRun(t *testing.T) {
 			expectedErr: errors.New("bad time"),
 			// ^ figure out how to use errors.Is (this will never happen)
 		},
-		// TODO: test what is passed into run.Configure and run.Shutdown
+		// TODO: test what is passed into run.Configure and run.SaveConfig
 
 	}
 	for name, test := range table {

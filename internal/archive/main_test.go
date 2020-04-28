@@ -2,6 +2,7 @@ package archive_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/google/go-cmp/cmp"
@@ -36,6 +37,7 @@ func TestFile_NewAndNewFromReader(t *testing.T) {
 	tempFile.Close()
 	defer os.Remove(tempFile.Name())
 	table := map[string]struct {
+		ctx                    context.Context
 		hashFn                 func(io.Reader) (string, int64, error)
 		input                  interface{}
 		expectedIsMetaDataFile bool
@@ -92,9 +94,9 @@ func TestFile_NewAndNewFromReader(t *testing.T) {
 			var f *archive.File
 			var err error
 			if inputIsString, ok := test.input.(string); ok {
-				f, err = archive.New(test.hashFn, inputIsString)
+				f, err = archive.New(test.ctx, test.hashFn, inputIsString)
 			} else {
-				f, err = archive.NewFromReader(test.hashFn, test.input.(io.ReadCloser))
+				f, err = archive.NewFromReader(test.ctx, test.hashFn, test.input.(io.ReadCloser))
 			}
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
@@ -125,21 +127,25 @@ func TestFile_NewAndNewFromReader(t *testing.T) {
 
 func TestNewSetsNameAsHash(t *testing.T) {
 	table := map[string]struct {
+		ctx      context.Context
 		hashFn   func(io.Reader) (string, int64, error)
 		input    io.ReadCloser
 		expected string
 	}{
 		"hash is calculated for input test": {
+			ctx:      context.Background(),
 			hashFn:   identityHash,
 			input:    ioutil.NopCloser(bytes.NewReader([]byte("test"))),
 			expected: "test-identity",
 		},
 		"hash is calculated for input wat": {
+			ctx:      context.Background(),
 			hashFn:   identityHash,
 			input:    ioutil.NopCloser(bytes.NewReader([]byte("wat"))),
 			expected: "wat-identity",
 		},
 		"metafile name is calculated for metafile input": {
+			ctx:      context.Background(),
 			hashFn:   identityHash,
 			input:    ioutil.NopCloser(bytes.NewReader([]byte(`{"memorybox":{"file":"test","source":"testing"},"data":{}}`))),
 			expected: archive.MetaFilePrefix + "test",
@@ -148,7 +154,7 @@ func TestNewSetsNameAsHash(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			f, err := archive.NewFromReader(test.hashFn, test.input)
+			f, err := archive.NewFromReader(test.ctx, test.hashFn, test.input)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -163,7 +169,7 @@ func TestNewSetsNameAsHash(t *testing.T) {
 func TestMetaFileName(t *testing.T) {
 	filename := "test"
 	expected := archive.MetaFilePrefix + filename
-	actual := archive.MetaFileName(filename)
+	actual := archive.ToMetaFileName(filename)
 	if diff := cmp.Diff(expected, actual); diff != "" {
 		t.Fatal(diff)
 	}
@@ -177,7 +183,7 @@ func TestFile_Read(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"meta reader with valid json": func() testCase {
-			f, err := archive.NewFromReader(identityHash, ioutil.NopCloser(bytes.NewReader([]byte("test"))))
+			f, err := archive.NewFromReader(context.Background(), identityHash, ioutil.NopCloser(bytes.NewReader([]byte("test"))))
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -204,7 +210,7 @@ func TestFile_Read(t *testing.T) {
 				if writeErr != nil {
 					t.Fatalf("test setup: %s", writeErr)
 				}
-				f, loadErr := archive.New(identityHash, tempFile.Name())
+				f, loadErr := archive.New(context.Background(), identityHash, tempFile.Name())
 				if loadErr != nil {
 					t.Fatalf("test setup: %s", loadErr)
 				}
@@ -253,7 +259,7 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 	table := map[string]testCase{
 		// the value of the metakey is the content hash of the file it describes
 		"metakey is immutable for consumers": func() testCase {
-			f, err := archive.NewFromReader(identityHash, ioutil.NopCloser(bytes.NewReader([]byte("test"))))
+			f, err := archive.NewFromReader(context.Background(), identityHash, ioutil.NopCloser(bytes.NewReader([]byte("test"))))
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -307,7 +313,7 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			f, err := archive.NewFromReader(identityHash, ioutil.NopCloser(bytes.NewReader([]byte("test"))))
+			f, err := archive.NewFromReader(context.Background(), identityHash, ioutil.NopCloser(bytes.NewReader([]byte("test"))))
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}

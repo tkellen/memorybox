@@ -66,7 +66,7 @@ func TestNew(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			result, err := memorybox.New(test.config)
+			result, err := memorybox.NewStore(test.config)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

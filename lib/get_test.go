@@ -1,6 +1,7 @@
 package memorybox_test
 
 import (
+	"context"
 	"errors"
 	"github.com/acomagu/bufpipe"
 	"github.com/google/go-cmp/cmp"
@@ -31,6 +32,7 @@ func TestGet(t *testing.T) {
 		writer *bufpipe.PipeWriter
 	}
 	type testCase struct {
+		ctx           context.Context
 		store         *testingstore.Store
 		io            *testIO
 		fixtures      []testingstore.Fixture
@@ -44,6 +46,7 @@ func TestGet(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"get existing file": {
+			ctx:           context.Background(),
 			store:         testingstore.New(fixtures),
 			fixtures:      fixtures,
 			request:       fixtures[0].Name,
@@ -51,6 +54,7 @@ func TestGet(t *testing.T) {
 			expectedErr:   nil,
 		},
 		"get missing file": {
+			ctx:           context.Background(),
 			store:         testingstore.New(fixtures),
 			fixtures:      fixtures,
 			request:       "missing",
@@ -58,6 +62,7 @@ func TestGet(t *testing.T) {
 			expectedErr:   errors.New("0 objects"),
 		},
 		"get with failed search": {
+			ctx: context.Background(),
 			store: func() *testingstore.Store {
 				store := testingstore.New(fixtures)
 				store.SearchErrorWith = errors.New("bad search")
@@ -69,6 +74,7 @@ func TestGet(t *testing.T) {
 			expectedErr:   errors.New("bad search"),
 		},
 		"get existing file with failed retrieval": {
+			ctx: context.Background(),
 			store: func() *testingstore.Store {
 				store := testingstore.New(fixtures)
 				store.GetErrorWith = errors.New("bad get")
@@ -80,6 +86,7 @@ func TestGet(t *testing.T) {
 			expectedErr:   errors.New("bad get"),
 		},
 		"get existing file with failed copy to sink": {
+			ctx:   context.Background(),
 			store: testingstore.New(fixtures),
 			io: func() *testIO {
 				reader, writer := bufpipe.New(nil)
@@ -103,7 +110,7 @@ func TestGet(t *testing.T) {
 				reader = test.io.reader
 				writer = test.io.writer
 			}
-			err := memorybox.Get(test.store, test.request, writer)
+			err := memorybox.Get(test.ctx, test.store, test.request, writer)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

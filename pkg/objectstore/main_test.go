@@ -16,6 +16,7 @@ package objectstore_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/minio/minio-go/v6"
@@ -26,20 +27,20 @@ import (
 )
 
 type s3mock struct {
-	putObject   func(string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
-	getObject   func(string, string, minio.GetObjectOptions) (*minio.Object, error)
+	putObject   func(context.Context, string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
+	getObject   func(context.Context, string, string, minio.GetObjectOptions) (*minio.Object, error)
 	listObjects func(string, string, bool, <-chan struct{}) <-chan minio.ObjectInfo
-	statObject  func(string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
+	statObject  func(context.Context, string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
 }
 
-func (s3 *s3mock) PutObject(bucket string, key string, reader io.Reader, size int64, opts minio.PutObjectOptions) (int64, error) {
-	return s3.putObject(bucket, key, reader, size, opts)
+func (s3 *s3mock) PutObjectWithContext(ctx context.Context, bucket string, key string, reader io.Reader, size int64, opts minio.PutObjectOptions) (int64, error) {
+	return s3.putObject(ctx, bucket, key, reader, size, opts)
 }
-func (s3 *s3mock) GetObject(bucket string, key string, opts minio.GetObjectOptions) (*minio.Object, error) {
-	return s3.getObject(bucket, key, opts)
+func (s3 *s3mock) GetObjectWithContext(ctx context.Context, bucket string, key string, opts minio.GetObjectOptions) (*minio.Object, error) {
+	return s3.getObject(ctx, bucket, key, opts)
 }
-func (s3 *s3mock) StatObject(bucket string, key string, opts minio.StatObjectOptions) (minio.ObjectInfo, error) {
-	return s3.statObject(bucket, key, opts)
+func (s3 *s3mock) StatObjectWithContext(ctx context.Context, bucket string, key string, opts minio.StatObjectOptions) (minio.ObjectInfo, error) {
+	return s3.statObject(ctx, bucket, key, opts)
 }
 func (s3 *s3mock) ListObjects(bucket string, prefix string, recursive bool, doneCh <-chan struct{}) <-chan minio.ObjectInfo {
 	return s3.listObjects(bucket, prefix, recursive, doneCh)
@@ -71,7 +72,7 @@ func TestStore_Put_Success(t *testing.T) {
 	expectedReader := bytes.NewReader([]byte("test"))
 	expectedFilename := "test"
 	objectstore.New(expectedBucket, &s3mock{
-		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
+		putObject: func(_ context.Context, bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
 			called = true
 			if expectedBucket != bucket {
 				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
@@ -85,7 +86,7 @@ func TestStore_Put_Success(t *testing.T) {
 			bytes, _ := ioutil.ReadAll(expectedReader)
 			return int64(len(bytes)), nil
 		},
-	}).Put(expectedReader, expectedFilename)
+	}).Put(context.Background(), expectedReader, expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -98,7 +99,7 @@ func TestStore_Put_Failure(t *testing.T) {
 	expectedFilename := "test"
 	expectedError := errors.New("failed")
 	err := objectstore.New(expectedBucket, &s3mock{
-		putObject: func(bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
+		putObject: func(_ context.Context, bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
 			called = true
 			if expectedBucket != bucket {
 				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
@@ -111,7 +112,7 @@ func TestStore_Put_Failure(t *testing.T) {
 			}
 			return 0, expectedError
 		},
-	}).Put(expectedReader, expectedFilename)
+	}).Put(context.Background(), expectedReader, expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -125,7 +126,7 @@ func TestStore_Get(t *testing.T) {
 	expectedBucket := "bucket"
 	expectedFilename := "test"
 	objectstore.New(expectedBucket, &s3mock{
-		getObject: func(bucket string, key string, options minio.GetObjectOptions) (*minio.Object, error) {
+		getObject: func(_ context.Context, bucket string, key string, options minio.GetObjectOptions) (*minio.Object, error) {
 			called = true
 			if expectedBucket != bucket {
 				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
@@ -135,7 +136,7 @@ func TestStore_Get(t *testing.T) {
 			}
 			return &minio.Object{}, nil
 		},
-	}).Get(expectedFilename)
+	}).Get(context.Background(), expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -146,7 +147,7 @@ func TestStore_Exists(t *testing.T) {
 	expectedBucket := "bucket"
 	expectedFilename := "test"
 	objectstore.New(expectedBucket, &s3mock{
-		statObject: func(bucket string, key string, options minio.StatObjectOptions) (minio.ObjectInfo, error) {
+		statObject: func(_ context.Context, bucket string, key string, options minio.StatObjectOptions) (minio.ObjectInfo, error) {
 			called = true
 			if expectedBucket != bucket {
 				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
@@ -156,7 +157,7 @@ func TestStore_Exists(t *testing.T) {
 			}
 			return minio.ObjectInfo{}, nil
 		},
-	}).Exists(expectedFilename)
+	}).Exists(context.Background(), expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -182,7 +183,7 @@ func TestStore_Search(t *testing.T) {
 			}()
 			return results
 		},
-	}).Search(expectedPrefix)
+	}).Search(context.Background(), expectedPrefix)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}

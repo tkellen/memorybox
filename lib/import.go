@@ -2,6 +2,7 @@ package memorybox
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"github.com/tidwall/gjson"
 	"github.com/tkellen/memorybox/internal/archive"

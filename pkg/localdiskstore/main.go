@@ -1,6 +1,11 @@
+// Package localdiskstore is a memorybox.Store compatible abstraction over the
+// golang standard library for os-agnostic path resolution and disk io. Context
+// values are ignored in this package because no goroutines are used in any of
+// the methods.
 package localdiskstore
 
 import (
+	"context"
 	"fmt"
 	"github.com/mitchellh/go-homedir"
 	"io"
@@ -33,7 +38,7 @@ func (s *Store) String() string {
 
 // Put writes the content of an io.Reader to local disk, naming the file with
 // a hash of its contents.
-func (s *Store) Put(source io.Reader, hash string) error {
+func (s *Store) Put(_ context.Context, source io.Reader, hash string) error {
 	if err := os.MkdirAll(s.RootPath, 0755); err != nil {
 		return fmt.Errorf("could not create %s: %w", s.RootPath, err)
 	}
@@ -50,13 +55,13 @@ func (s *Store) Put(source io.Reader, hash string) error {
 }
 
 // Get finds an object in storage by name and returns an io.ReadCloser for it.
-func (s *Store) Get(request string) (io.ReadCloser, error) {
+func (s *Store) Get(_ context.Context, request string) (io.ReadCloser, error) {
 	return os.Open(path.Join(s.RootPath, request))
 }
 
 // Search finds matching files in storage by prefix.
-func (s *Store) Search(search string) ([]string, error) {
-	matches := []string{}
+func (s *Store) Search(_ context.Context, search string) ([]string, error) {
+	var matches []string
 	results, err := filepath.Glob(path.Join(s.RootPath, search) + "*")
 	if err != nil {
 		return nil, fmt.Errorf("local store search: %s", err)
@@ -68,7 +73,7 @@ func (s *Store) Search(search string) ([]string, error) {
 }
 
 // Exists determines if an object exists in the local store already.
-func (s *Store) Exists(search string) bool {
+func (s *Store) Exists(_ context.Context, search string) bool {
 	_, err := os.Stat(path.Join(s.RootPath, search))
 	return err == nil
 }

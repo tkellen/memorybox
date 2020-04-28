@@ -32,6 +32,7 @@ import (
 // copying the contents of one store to another could still suffer from this
 // problem. Seems unlikely...
 func PutMany(
+	ctx context.Context,
 	store Store,
 	hashFn func(source io.Reader) (string, int64, error),
 	requests []string,
@@ -48,7 +49,7 @@ func PutMany(
 	// generated ones.
 	queue := make(chan *archive.File)
 	// Preprocess all files as described above.
-	preprocess, preprocessCtx := errgroup.WithContext(context.Background())
+	preprocess, preprocessCtx := errgroup.WithContext(ctx)
 	preprocess.Go(func() error {
 		sem := semaphore.NewWeighted(int64(concurrency))
 		for index, item := range requests {
@@ -59,20 +60,22 @@ func PutMany(
 			item := item // https://golang.org/doc/faq#closures_and_goroutines
 			preprocess.Go(func() error {
 				defer sem.Release(1)
-				file, err := archive.New(hashFn, item)
+				file, err := archive.New(ctx, hashFn, item)
 				if err != nil {
 					return err
 				}
 				if inlineMeta {
 					file.MetaSet("", metadata[index])
 				}
-				// Store metadata files first always.
+				// Store metadata files that are explicitly being copied using
+				// memorybox to prevent data races with them being automatically
+				// created by memorybox.
 				if file.IsMetaDataFile() {
 					queue <- file
 					return nil
 				}
-				// If this is a datafile, persist it.
-				return Put(store, file, logger)
+				// If this is a datafile, persist it now.
+				return Put(ctx, store, file, logger)
 			})
 		}
 		return nil
@@ -91,11 +94,11 @@ func PutMany(
 		return err
 	}
 	close(queue)
-	// Wait for all datafiles to be collected from the queue.
+	// Wait for all metafiles to be collected from the queue.
 	collector.Wait()
-	// Any metadata files have now been stored. All files that remain are
-	// datafiles and should be persisted.
-	metaFileGroup, metaFileCtx := errgroup.WithContext(context.Background())
+	// Any datafiles have now been stored. Any metafiles that were put manually
+	// should be persisted now/last.
+	metaFileGroup, metaFileCtx := errgroup.WithContext(ctx)
 	metaFileGroup.Go(func() error {
 		sem := semaphore.NewWeighted(int64(concurrency))
 		for _, file := range metaFiles {
@@ -105,7 +108,7 @@ func PutMany(
 			}
 			metaFileGroup.Go(func() error {
 				defer sem.Release(1)
-				return Put(store, file, logger)
+				return Put(ctx, store, file, logger)
 			})
 		}
 		return nil
@@ -115,7 +118,7 @@ func PutMany(
 }
 
 // Put persists an archive.File and its metadata to the provided store.
-func Put(store Store, file *archive.File, logger *log.Logger) error {
+func Put(ctx context.Context, store Store, file *archive.File, logger *log.Logger) error {
 	// Always close files to ensure the temporary backing files are cleaned.
 	defer file.Close()
 	// If file is a metafile, blindly write it and signal completion. There is
@@ -124,26 +127,26 @@ func Put(store Store, file *archive.File, logger *log.Logger) error {
 	// assume they are fine with this.
 	if file.IsMetaDataFile() {
 		logger.Printf("%s -> %s (metafile detected)", file.Name(), file.Name())
-		return store.Put(file, file.Name())
+		return store.Put(ctx, file, file.Name())
 	}
 	eg := errgroup.Group{}
 	// Try to store datafile.
 	eg.Go(func() error {
-		if store.Exists(file.Name()) {
+		if store.Exists(ctx, file.Name()) {
 			logger.Printf("%s -> %s (skipped, exists)", file.Source(), file.Name())
 			return nil
 		}
 		logger.Printf("%s -> %s", file.Source(), file.Name())
-		return store.Put(file, file.Name())
+		return store.Put(ctx, file, file.Name())
 	})
 	// Create metafile silently (only if required).
 	eg.Go(func() error {
 		metaFile := archive.NewMetaFile(file)
 		defer metaFile.Close()
-		if store.Exists(metaFile.Name()) {
+		if store.Exists(ctx, metaFile.Name()) {
 			return nil
 		}
-		return store.Put(metaFile, metaFile.Name())
+		return store.Put(ctx, metaFile, metaFile.Name())
 	})
 	return eg.Wait()
 }

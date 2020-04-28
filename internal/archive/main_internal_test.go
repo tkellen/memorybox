@@ -2,6 +2,7 @@ package archive
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"io"
 	"io/ioutil"
@@ -30,11 +31,13 @@ func TestFile_init(t *testing.T) {
 	}
 	defer os.Remove(tempFile.Name())
 	table := map[string]struct {
+		ctx         context.Context
 		input       interface{}
 		setup       func(sys *sys)
 		expectedErr error
 	}{
 		"success from stdin": {
+			ctx:   context.Background(),
 			input: "-",
 			setup: func(sys *sys) {
 				sys.Stdin = ioutil.NopCloser(bytes.NewReader(expectedBytes))
@@ -42,6 +45,7 @@ func TestFile_init(t *testing.T) {
 			expectedErr: nil,
 		},
 		"success from url": {
+			ctx:   context.Background(),
 			input: "http://totally.legit",
 			setup: func(sys *sys) {
 				// Mock every http request to contain our expected bytes.
@@ -60,6 +64,7 @@ func TestFile_init(t *testing.T) {
 			expectedErr: nil,
 		},
 		"fail on inability to make http request for input url": {
+			ctx:   context.Background(),
 			input: "http://that.is.not.a.valid.url",
 			setup: func(sys *sys) {
 				sys.Get = http.Get
@@ -67,6 +72,7 @@ func TestFile_init(t *testing.T) {
 			expectedErr: errors.New("no such host"),
 		},
 		"fail on non-200 http response from url input": {
+			ctx:   context.Background(),
 			input: "http://totally.legit",
 			setup: func(sys *sys) {
 				// Mock every http request to fail with a 400 error code.
@@ -85,6 +91,7 @@ func TestFile_init(t *testing.T) {
 			expectedErr: errors.New("http code: 400"),
 		},
 		"fail on inability to create temporary directory": {
+			ctx:   context.Background(),
 			input: "-",
 			setup: func(sys *sys) {
 				sys.TempDirBase = path.Join("tmp", "nope", "bad")
@@ -92,6 +99,7 @@ func TestFile_init(t *testing.T) {
 			expectedErr: os.ErrNotExist,
 		},
 		"fail on inability to buffer streaming input to disk": {
+			ctx:   context.Background(),
 			input: "-",
 			setup: func(sys *sys) {
 				sys.TempDir = path.Join("tmp", "nope", "bad")
@@ -99,6 +107,7 @@ func TestFile_init(t *testing.T) {
 			expectedErr: os.ErrNotExist,
 		},
 		"fail on inability to open file to check if it is a metafile": {
+			ctx:   context.Background(),
 			input: ioutil.NopCloser(bytes.NewBuffer(expectedBytes)),
 			setup: func(sys *sys) {
 				sys.ReadFile = func(name string) ([]byte, error) {
@@ -111,9 +120,9 @@ func TestFile_init(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			f := new(identityHash)
+			f := new(test.ctx, identityHash)
 			test.setup(f.sys)
-			f, err := f.init(test.input)
+			f, err := f.init(test.ctx, test.input)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -135,7 +144,7 @@ func TestFile_init(t *testing.T) {
 }
 
 func TestFile_Close(t *testing.T) {
-	f := new(identityHash)
+	f := new(context.Background(), identityHash)
 	// a temp directory that cannot be cleaned up by os.RemoveAll
 	f.sys.TempDir = "/tmp/."
 	if err := f.Close(); err == nil {

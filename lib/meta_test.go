@@ -2,6 +2,7 @@ package memorybox_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"github.com/acomagu/bufpipe"
 	"github.com/google/go-cmp/cmp"
@@ -20,6 +21,7 @@ type testIO struct {
 
 func TestMetaGet(t *testing.T) {
 	type testCase struct {
+		ctx           context.Context
 		store         memorybox.Store
 		io            *testIO
 		fixtures      []testingstore.Fixture
@@ -33,6 +35,7 @@ func TestMetaGet(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"request existing metafile": {
+			ctx:   context.Background(),
 			store: testingstore.New(fixtures),
 			io: func() *testIO {
 				reader, writer := bufpipe.New(nil)
@@ -47,6 +50,7 @@ func TestMetaGet(t *testing.T) {
 			expectedErr:   nil,
 		},
 		"request existing metafile with failed copy to sink": {
+			ctx:   context.Background(),
 			store: testingstore.New(fixtures),
 			io: func() *testIO {
 				reader, writer := bufpipe.New(nil)
@@ -65,7 +69,7 @@ func TestMetaGet(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			err := memorybox.MetaGet(test.store, test.request, test.io.writer)
+			err := memorybox.MetaGet(test.ctx, test.store, test.request, test.io.writer)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -84,6 +88,7 @@ func TestMetaGet(t *testing.T) {
 }
 
 func TestMetaSetAndDelete(t *testing.T) {
+	ctx := context.Background()
 	fixtures := []testingstore.Fixture{
 		testingstore.NewFixture("something", false, memorybox.Sha256),
 		testingstore.NewFixture("something", true, memorybox.Sha256),
@@ -92,16 +97,16 @@ func TestMetaSetAndDelete(t *testing.T) {
 	request := fixtures[0].Name
 	expectedKeyAndValue := "test"
 	// add meta key
-	if err := memorybox.MetaSet(testStore, request, expectedKeyAndValue, expectedKeyAndValue); err != nil {
+	if err := memorybox.MetaSet(ctx, testStore, request, expectedKeyAndValue, expectedKeyAndValue); err != nil {
 		t.Fatal(err)
 	}
 	// confirm key was set by asking for the metafile again
 	reader, writer := bufpipe.New(nil)
-	if err := memorybox.MetaGet(testStore, request, writer); err != nil {
+	if err := memorybox.MetaGet(ctx, testStore, request, writer); err != nil {
 		t.Fatal(err)
 	}
 	writer.Close()
-	metaSetCheck, metaSetCheckErr := archive.NewFromReader(memorybox.Sha256, reader)
+	metaSetCheck, metaSetCheckErr := archive.NewFromReader(ctx, memorybox.Sha256, reader)
 	if metaSetCheckErr != nil {
 		t.Fatal(metaSetCheckErr)
 	}
@@ -109,16 +114,16 @@ func TestMetaSetAndDelete(t *testing.T) {
 		t.Fatal("expected key %[1] to be set to %[1], saw %[1]", metaSetCheck.MetaGet(expectedKeyAndValue))
 	}
 	// remove key
-	if err := memorybox.MetaDelete(testStore, request, expectedKeyAndValue); err != nil {
+	if err := memorybox.MetaDelete(ctx, testStore, request, expectedKeyAndValue); err != nil {
 		t.Fatal(err)
 	}
 	// confirm key was removed by asking for it again
 	reader, writer = bufpipe.New(nil)
-	if err := memorybox.MetaGet(testStore, request, writer); err != nil {
+	if err := memorybox.MetaGet(ctx, testStore, request, writer); err != nil {
 		t.Fatal(err)
 	}
 	writer.Close()
-	metaDeleteCheck, metaDeleteCheckErr := archive.NewFromReader(memorybox.Sha256, reader)
+	metaDeleteCheck, metaDeleteCheckErr := archive.NewFromReader(ctx, memorybox.Sha256, reader)
 	if metaDeleteCheckErr != nil {
 		t.Fatal(metaDeleteCheckErr)
 	}
@@ -129,6 +134,7 @@ func TestMetaSetAndDelete(t *testing.T) {
 
 func TestMetaFailures(t *testing.T) {
 	type testCase struct {
+		ctx           context.Context
 		store         memorybox.Store
 		fixtures      []testingstore.Fixture
 		request       string
@@ -141,6 +147,7 @@ func TestMetaFailures(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"request missing metafile": {
+			ctx:           context.Background(),
 			store:         testingstore.New(fixtures),
 			fixtures:      fixtures,
 			request:       "missing",
@@ -148,6 +155,7 @@ func TestMetaFailures(t *testing.T) {
 			expectedErr:   errors.New("0 objects"),
 		},
 		"request with failed search": {
+			ctx: context.Background(),
 			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.SearchErrorWith = errors.New("bad search")
@@ -158,6 +166,7 @@ func TestMetaFailures(t *testing.T) {
 			expectedErr:   errors.New("bad search"),
 		},
 		"request existing metafile with failed retrieval": {
+			ctx: context.Background(),
 			store: func() memorybox.Store {
 				store := testingstore.New(fixtures)
 				store.GetErrorWith = errors.New("bad get")
@@ -172,7 +181,7 @@ func TestMetaFailures(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run("Meta "+name, func(t *testing.T) {
-			err := memorybox.MetaGet(test.store, test.request, bytes.NewBuffer([]byte{}))
+			err := memorybox.MetaGet(test.ctx, test.store, test.request, bytes.NewBuffer([]byte{}))
 			if err == nil {
 				t.Fatal(err)
 			}
@@ -181,7 +190,7 @@ func TestMetaFailures(t *testing.T) {
 			}
 		})
 		t.Run("MetaSet "+name, func(t *testing.T) {
-			err := memorybox.MetaSet(test.store, test.request, "test", "test")
+			err := memorybox.MetaSet(test.ctx, test.store, test.request, "test", "test")
 			if err == nil {
 				t.Fatal(err)
 			}
@@ -190,7 +199,7 @@ func TestMetaFailures(t *testing.T) {
 			}
 		})
 		t.Run("MetaDelete "+name, func(t *testing.T) {
-			err := memorybox.MetaDelete(test.store, test.request, "test")
+			err := memorybox.MetaDelete(test.ctx, test.store, test.request, "test")
 			if err == nil {
 				t.Fatal(err)
 			}

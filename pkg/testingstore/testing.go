@@ -2,6 +2,7 @@ package testingstore
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"github.com/tkellen/memorybox/internal/archive"
 	"io"
@@ -30,8 +31,8 @@ func NewFixture(content string, isMeta bool, hashFn func(source io.Reader) (stri
 	contentAsBytes := []byte(content)
 	name, _, _ := hashFn(bytes.NewBuffer(contentAsBytes))
 	if isMeta {
-		name = archive.MetaFileName(name)
-		f, _ := archive.NewFromReader(hashFn, ioutil.NopCloser(bytes.NewReader(contentAsBytes)))
+		name = archive.ToMetaFileName(name)
+		f, _ := archive.NewFromReader(context.Background(), hashFn, ioutil.NopCloser(bytes.NewReader(contentAsBytes)))
 		defer f.Close()
 		contentAsBytes, _ = ioutil.ReadAll(archive.NewMetaFile(f))
 	}
@@ -59,7 +60,7 @@ func (s *Store) String() string {
 
 // Put assigns the content of an io.Reader to a string keyed in-memory map using
 // the hash as a key.
-func (s *Store) Put(source io.Reader, hash string) error {
+func (s *Store) Put(_ context.Context, source io.Reader, hash string) error {
 	data, err := ioutil.ReadAll(source)
 	if err != nil {
 		return err
@@ -69,7 +70,7 @@ func (s *Store) Put(source io.Reader, hash string) error {
 }
 
 // Search finds matching items in storage by prefix.
-func (s *Store) Search(search string) ([]string, error) {
+func (s *Store) Search(_ context.Context, search string) ([]string, error) {
 	if s.SearchErrorWith != nil {
 		return nil, s.SearchErrorWith
 	}
@@ -84,7 +85,7 @@ func (s *Store) Search(search string) ([]string, error) {
 }
 
 // Get finds an object in storage by name and returns an io.ReadCloser for it.
-func (s *Store) Get(request string) (io.ReadCloser, error) {
+func (s *Store) Get(_ context.Context, request string) (io.ReadCloser, error) {
 	if s.GetErrorWith != nil {
 		return nil, s.GetErrorWith
 	}
@@ -98,7 +99,7 @@ func (s *Store) Get(request string) (io.ReadCloser, error) {
 }
 
 // Exists determines if a requested object exists in the Store.
-func (s *Store) Exists(request string) bool {
+func (s *Store) Exists(_ context.Context, request string) bool {
 	exists := false
 	s.Data.Range(func(key interface{}, value interface{}) bool {
 		if key.(string) == request {

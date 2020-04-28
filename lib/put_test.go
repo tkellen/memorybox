@@ -1,6 +1,7 @@
 package memorybox_test
 
 import (
+	"context"
 	"github.com/tkellen/memorybox/internal/archive"
 	"github.com/tkellen/memorybox/lib"
 	"github.com/tkellen/memorybox/pkg/testingstore"
@@ -14,6 +15,7 @@ import (
 func TestPutManySuccess(t *testing.T) {
 	silentLogger := log.New(ioutil.Discard, "", 0)
 	type testCase struct {
+		ctx                      context.Context
 		store                    memorybox.Store
 		fixtures                 []testingstore.Fixture
 		concurrency              int
@@ -28,6 +30,7 @@ func TestPutManySuccess(t *testing.T) {
 				testingstore.NewFixture("bar-content", false, hashFn),
 			}
 			return testCase{
+				ctx:                      context.Background(),
 				store:                    testingstore.New(fixtures),
 				fixtures:                 fixtures,
 				concurrency:              2,
@@ -40,6 +43,7 @@ func TestPutManySuccess(t *testing.T) {
 				testingstore.NewFixture(`{"key":"value"}`, true, hashFn),
 			}
 			return testCase{
+				ctx:                      context.Background(),
 				store:                    testingstore.New(fixtures),
 				fixtures:                 fixtures,
 				concurrency:              2,
@@ -52,6 +56,7 @@ func TestPutManySuccess(t *testing.T) {
 				testingstore.NewFixture("foo-content", false, hashFn),
 			}
 			return testCase{
+				ctx:                      context.Background(),
 				store:                    testingstore.New(fixtures),
 				fixtures:                 fixtures,
 				concurrency:              2,
@@ -74,7 +79,7 @@ func TestPutManySuccess(t *testing.T) {
 			}
 			// Run put twice, it should be idempotent.
 			for i := 0; i < 2; i++ {
-				err := memorybox.PutMany(test.store, hashFn, inputs, test.concurrency, silentLogger, []string{})
+				err := memorybox.PutMany(test.ctx, test.store, hashFn, inputs, test.concurrency, silentLogger, []string{})
 				if err != nil && test.expectedErr == nil {
 					t.Fatal(err)
 				}
@@ -84,13 +89,13 @@ func TestPutManySuccess(t *testing.T) {
 			}
 			// Ensure all files were persisted.
 			for _, fixture := range test.fixtures {
-				if !test.store.Exists(fixture.Name) {
+				if !test.store.Exists(test.ctx, fixture.Name) {
 					t.Fatalf("expected %s to be in store", fixture.Name)
 				}
 				// if the fixture wasn't a metafile, make sure one was made
-				if !strings.HasPrefix(fixture.Name, archive.MetaFilePrefix) {
-					metaFileName := archive.MetaFileName(fixture.Name)
-					if !test.store.Exists(metaFileName) {
+				if !archive.IsMetaFileName(fixture.Name) {
+					metaFileName := archive.ToMetaFileName(fixture.Name)
+					if !test.store.Exists(test.ctx, metaFileName) {
 						t.Fatalf("expected %s to be in store", metaFileName)
 					}
 				}
@@ -110,7 +115,7 @@ func TestPutManySuccess(t *testing.T) {
 
 func TestPutManyFail(t *testing.T) {
 	silentLogger := log.New(ioutil.Discard, "", 0)
-	err := memorybox.PutMany(testingstore.New([]testingstore.Fixture{}), memorybox.Sha256, []string{"nope"}, 2, silentLogger, []string{})
+	err := memorybox.PutMany(context.Background(), testingstore.New([]testingstore.Fixture{}), memorybox.Sha256, []string{"nope"}, 2, silentLogger, []string{})
 	if err == nil {
 		t.Fatal("expected error")
 	}

@@ -2,6 +2,7 @@ package archive
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/hashicorp/go-retryablehttp"
@@ -13,7 +14,10 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 )
+
+type hashFn func(io.Reader) (string, int64, error)
 
 // File satisfies the io.ReadCloser interface and provides memorybox-specific
 // additions for management of metadata / fetching content that is not already
@@ -24,7 +28,7 @@ type File struct {
 	meta []byte
 	// hashFn computes the content-hash of the supplied reader and returns a
 	// string valued result along with the size of the input.
-	hashFn func(io.Reader) (string, int64, error)
+	hashFn hashFn
 	// Name is the name of the file as computed by sending entire content of the
 	// file through hashFn.
 	name string
@@ -83,16 +87,20 @@ type sys struct {
 }
 
 // new returns a bare file ready for initialization.
-func new(hashFn func(io.Reader) (string, int64, error)) *File {
+func new(ctx context.Context, hashFn func(io.Reader) (string, int64, error)) *File {
 	return &File{
 		meta:   []byte(`{"data":{}}`),
 		hashFn: hashFn,
 		sys: &sys{
-			Get: func() func(url string) (*http.Response, error) {
+			Get: func(url string) (*http.Response, error) {
 				client := retryablehttp.NewClient()
 				client.Logger = log.New(ioutil.Discard, "", 0)
-				return client.Get
-			}(),
+				request, err := retryablehttp.NewRequest("GET", url, nil)
+				if err != nil {
+					return nil, err
+				}
+				return client.Do(request.WithContext(ctx))
+			},
 			Open:        os.Open,
 			ReadFile:    ioutil.ReadFile,
 			Stdin:       os.Stdin,
@@ -106,21 +114,22 @@ func new(hashFn func(io.Reader) (string, int64, error)) *File {
 // New creates a new File instance and populates its fields by fetching/reading
 // the input data supplied to this function. New accepts values that denote
 // local files (path/to/file), stdin (-), or valid urls.
-func New(hashFn func(io.Reader) (string, int64, error), input string) (*File, error) {
-	return new(hashFn).init(input)
+func New(ctx context.Context, hashFn func(io.Reader) (string, int64, error), input string) (*File, error) {
+	return new(ctx, hashFn).init(ctx, input)
 }
 
 // NewFromReader uses the supplied input as the content of the file.
-func NewFromReader(hashFn func(io.Reader) (string, int64, error), input io.ReadCloser) (*File, error) {
-	return new(hashFn).init(input)
+func NewFromReader(ctx context.Context, hashFn func(io.Reader) (string, int64, error), input io.ReadCloser) (*File, error) {
+	return new(ctx, hashFn).init(ctx, input)
 }
 
 // NewMetaFile creates a metadata "pair" for a source data file. When metadata
 // files are read, they stream a json representation of their meta field.
 func NewMetaFile(source *File) *File {
 	// Metafiles have the same name as the data file they describe + a prefix.
-	name := MetaFileName(source.name)
-	f := new(source.hashFn)
+	name := ToMetaFileName(source.name)
+	// No network activity is required for these so the context is invented.
+	f := new(context.Background(), source.hashFn)
 	f.source = name
 	f.name = name
 	// If the source file had metadata set on it, bring it along too.
@@ -141,7 +150,7 @@ func MetaFileName(source string) string {
 }
 
 // init prepares the internal state of a File for consumption.
-func (f *File) init(input interface{}) (result *File, err error) {
+func (f *File) init(ctx context.Context, input interface{}) (result *File, err error) {
 	// Ensure temporary files are cleaned up even if this fails.
 	defer func() {
 		if err != nil {
@@ -157,7 +166,7 @@ func (f *File) init(input interface{}) (result *File, err error) {
 		f.source = fmt.Sprintf("%s", input)
 	}
 	// Get a reader for the data backing the supplied input.
-	reader, filepath, readerErr := f.fetch(input)
+	reader, filepath, readerErr := f.fetch(ctx, input)
 	if readerErr != nil {
 		err = readerErr
 		return nil, fmt.Errorf("fetch: %w", readerErr)
@@ -206,7 +215,7 @@ func (f *File) init(input interface{}) (result *File, err error) {
 }
 
 // fetch produces an io.ReadCloser from any supported source,
-func (f *File) fetch(input interface{}) (io.ReadCloser, string, error) {
+func (f *File) fetch(ctx context.Context, input interface{}) (io.ReadCloser, string, error) {
 	// If the input is an io.ReadCloser already, create a temporary file that
 	// will be populated by reading it.
 	if reader, ok := input.(io.ReadCloser); ok {

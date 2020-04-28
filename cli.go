@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"github.com/docopt/docopt-go"
 	"github.com/tkellen/memorybox/internal/configfile"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"time"
 )
 
 const version = "dev"
@@ -60,6 +62,8 @@ type Flags struct {
 
 // Runner implements simplecli.Runner in the context of memorybox.
 type Runner struct {
+	ctx        context.Context
+	cancel     func()
 	Logger     *log.Logger
 	ConfigFile *configfile.ConfigFile
 	Flags      Flags
@@ -71,7 +75,10 @@ type Runner struct {
 
 // New creates a runner with all the required configuration.
 func New(logger *log.Logger) *Runner {
+	ctx, cancel := context.WithCancel(context.Background())
 	return &Runner{
+		ctx:        ctx,
+		cancel:     cancel,
 		Logger:     logger,
 		HashFn:     memorybox.Sha256,
 		PathConfig: "~/.memorybox/config",
@@ -119,7 +126,7 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 	if !run.Flags.Config {
 		// Only create a backing store if we're going to interact with one.
 		target := run.ConfigFile.Target(run.Flags.Target)
-		store, storeErr := memorybox.New(*target)
+		store, storeErr := memorybox.NewStore(*target)
 		if storeErr != nil {
 			return fmt.Errorf("failed to load %v: %s", target, storeErr)
 		}
@@ -132,13 +139,16 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 func (run *Runner) Dispatch() error {
 	f := run.Flags
 	if f.Put {
-		return memorybox.PutMany(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
+		return memorybox.PutMany(run.ctx, run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
 	}
 	if f.Import {
-		return memorybox.Import(run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
+		return memorybox.Import(run.ctx, run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
+	}
+	if f.Index {
+		return memorybox.Index(run.ctx, run.Store, run.Flags.Concurrency, run.Logger, os.Stdout)
 	}
 	if f.Get {
-		return memorybox.Get(run.Store, run.Flags.Hash, os.Stdout)
+		return memorybox.Get(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
 	}
 	if f.Config {
 		if f.Delete {
@@ -158,18 +168,25 @@ func (run *Runner) Dispatch() error {
 	}
 	if f.Meta {
 		if f.Delete {
-			return memorybox.MetaDelete(run.Store, run.Flags.Hash, run.Flags.Key)
+			return memorybox.MetaDelete(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key)
 		}
 		if f.Set {
-			return memorybox.MetaSet(run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
+			return memorybox.MetaSet(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
 		}
-		return memorybox.MetaGet(run.Store, run.Flags.Hash, os.Stdout)
+		return memorybox.MetaGet(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
 	}
 	return fmt.Errorf("command not implemented")
 }
 
-// Shutdown writes the contents of the in-memory config to the on-disk config
-// file for memorybox.
-func (run *Runner) Shutdown(writer io.Writer) error {
+// SaveConfig gives the program an opportunity to serialized the content of the
+// in-memory config file to a writer that is handled by the cli runner.
+func (run *Runner) SaveConfig(writer io.Writer) error {
 	return run.ConfigFile.Save(writer)
+}
+
+// Terminate handles SIGTERM signals.
+func (run *Runner) Terminate() {
+	log.Printf("shutdown signal recieved, cleaning up")
+	run.cancel()
+	time.Sleep(time.Second * 5)
 }

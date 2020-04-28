@@ -6,6 +6,7 @@ package localdiskstore_test
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"github.com/tkellen/memorybox/pkg/localdiskstore"
@@ -47,7 +48,7 @@ func TestStore_Put(t *testing.T) {
 	store := localdiskstore.New(tempDir)
 	filename := "test"
 	expected := []byte(filename)
-	putErr := store.Put(bytes.NewReader(expected), filename)
+	putErr := store.Put(context.Background(), bytes.NewReader(expected), filename)
 	if putErr != nil {
 		t.Fatal(putErr)
 	}
@@ -69,7 +70,7 @@ func TestStore_Put_CannotCreateHome(t *testing.T) {
 	store := localdiskstore.New(file.Name())
 	filename := "test"
 	expected := []byte(filename)
-	putErr := store.Put(bytes.NewReader(expected), filename)
+	putErr := store.Put(context.Background(), bytes.NewReader(expected), filename)
 	if putErr == nil {
 		t.Fatal("expected error creating home directory")
 	}
@@ -82,7 +83,7 @@ func TestStore_Put_BadReader(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	store := localdiskstore.New(tempDir)
-	putErr := store.Put(iotest.TimeoutReader(bytes.NewReader([]byte("test"))), "test")
+	putErr := store.Put(context.Background(), iotest.TimeoutReader(bytes.NewReader([]byte("test"))), "test")
 	if putErr == nil {
 		t.Fatal("expected put error")
 	}
@@ -95,7 +96,7 @@ func TestStore_Put_CannotCreateFile(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 	store := localdiskstore.New(tempDir)
-	putErr := store.Put(iotest.TimeoutReader(bytes.NewReader([]byte("test"))), path.Join("test", "file"))
+	putErr := store.Put(context.Background(), iotest.TimeoutReader(bytes.NewReader([]byte("test"))), path.Join("test", "file"))
 	if putErr == nil {
 		t.Fatal("expected put error")
 	}
@@ -114,7 +115,7 @@ func TestStore_Get(t *testing.T) {
 	if writeErr != nil {
 		t.Fatalf("failed setting up test: %s", writeErr)
 	}
-	data, getErr := store.Get("test")
+	data, getErr := store.Get(context.Background(), "test")
 	defer data.Close()
 	if getErr != nil {
 		t.Fatal(getErr)
@@ -140,10 +141,10 @@ func TestStore_Exists(t *testing.T) {
 	if writeErr != nil {
 		t.Fatalf("failed setting up test: %s", writeErr)
 	}
-	if !store.Exists(filename) {
+	if !store.Exists(context.Background(), filename) {
 		t.Fatal("expected boolean true for file that exists")
 	}
-	if store.Exists("nope") {
+	if store.Exists(context.Background(), "nope") {
 		t.Fatal("expected boolean false for file that does not exist")
 	}
 }
@@ -160,7 +161,7 @@ func TestStore_Search(t *testing.T) {
 		return ioutil.NopCloser(bytes.NewReader([]byte(content)))
 	}
 	for _, file := range expectedFiles {
-		if err := store.Put(reader(file), file); err != nil {
+		if err := store.Put(context.Background(), reader(file), file); err != nil {
 			t.Fatalf("test setup: %s", err)
 		}
 	}
@@ -193,7 +194,7 @@ func TestStore_Search(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			actualMatches, err := store.Search(test.search)
+			actualMatches, err := store.Search(context.Background(), test.search)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
