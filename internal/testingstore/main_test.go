@@ -5,10 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/mattetti/filebuffer"
+	"github.com/tkellen/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
-	"io"
 	"io/ioutil"
 	"path/filepath"
 	"sort"
@@ -17,14 +16,24 @@ import (
 	"testing/iotest"
 )
 
-// identityHash is a noop hashing function for testing that returns a string
-// value of the input (assumes ASCII input).
-func identityHash(source io.Reader) (string, int64, error) {
-	bytes, err := ioutil.ReadAll(source)
-	if err != nil {
-		return "", 0, err
+func TestIdentityHash(t *testing.T) {
+	input := []byte("test")
+	expected := "test-identity"
+	expectedSize := int64(len(input))
+	actual, actualSize, goodErr := testingstore.IdentityHash(bytes.NewReader(input))
+	if goodErr != nil {
+		t.Fatal(goodErr)
 	}
-	return string(bytes) + "-identity", int64(len(bytes)), nil
+	if expected != actual {
+		t.Fatalf("expected %s, got %s", expected, actual)
+	}
+	if expectedSize != actualSize {
+		t.Fatalf("expected size %d, got %d", expectedSize, actualSize)
+	}
+	_, _, err := testingstore.IdentityHash(iotest.TimeoutReader(bytes.NewReader([]byte("testing12341234"))))
+	if err == nil {
+		t.Fatal("expected error on bad reader")
+	}
 }
 
 func TestStore_String(t *testing.T) {
@@ -88,7 +97,7 @@ func TestStore_GetMissing(t *testing.T) {
 }
 
 func TestStore_Exists(t *testing.T) {
-	fixture, _ := archive.New("fixture", filebuffer.New([]byte("test")), identityHash)
+	fixture, _ := archive.New("fixture", filebuffer.New([]byte("test")), testingstore.IdentityHash)
 	store := testingstore.New([]*archive.File{fixture})
 	if !store.Exists(context.Background(), fixture.Name()) {
 		t.Fatal("expected boolean true for file that exists")
@@ -101,7 +110,7 @@ func TestStore_Exists(t *testing.T) {
 func TestStore_Search(t *testing.T) {
 	var fixtures []*archive.File
 	for _, fixture := range []string{"foo", "bar", "baz"} {
-		fixture, _ := archive.New("fixture", filebuffer.New([]byte(fixture)), identityHash)
+		fixture, _ := archive.New("fixture", filebuffer.New([]byte(fixture)), testingstore.IdentityHash)
 		fixtures = append(fixtures, fixture)
 	}
 	store := testingstore.New(fixtures)

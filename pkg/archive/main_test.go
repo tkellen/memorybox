@@ -6,23 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
-	"github.com/mattetti/filebuffer"
+	"github.com/tkellen/filebuffer"
+	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"testing"
 )
-
-// identityHash is a noop hashing function for testing that returns a string
-// value of the input plus a suffix (assumes ASCII input).
-func identityHash(source io.Reader) (string, int64, error) {
-	bytes, err := ioutil.ReadAll(source)
-	if err != nil {
-		return "", 0, err
-	}
-	return string(bytes) + "-identity", int64(len(bytes)), nil
-}
 
 func TestSha256(t *testing.T) {
 	input := []byte("test")
@@ -96,6 +88,67 @@ func TestDataFileNameFrom(t *testing.T) {
 	}
 }
 
+func TestDataFileNameFromMeta(t *testing.T) {
+	dataFile, err := archive.NewSha256("test", filebuffer.New([]byte("test")))
+	if err != nil {
+		t.Fatalf("test setup: %s", err)
+	}
+	metaFile := dataFile.MetaFile()
+	meta, readErr := ioutil.ReadAll(metaFile)
+	if readErr != nil {
+		t.Fatalf("test setup: %s", readErr)
+	}
+	table := map[string]struct {
+		input    []byte
+		expected string
+	}{
+		"datafile names are found in valid metadata": {
+			input:    meta,
+			expected: dataFile.Name(),
+		},
+		"empty string is returned for invalid input": {
+			input:    []byte("not json]]"),
+			expected: "",
+		},
+	}
+	for name, test := range table {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			actual := archive.DataFileNameFromMeta(test.input)
+			if diff := cmp.Diff(test.expected, actual); diff != "" {
+				t.Fatal(diff)
+			}
+		})
+	}
+}
+
+func TestHasherFromFileName(t *testing.T) {
+	table := map[string]struct {
+		input    string
+		expected archive.Hasher
+	}{
+		"sha256 suffix gives sha256": {
+			input:    "blahblah-sha256",
+			expected: archive.Sha256,
+		},
+		"unknown suffix gives sha256": {
+			input:    "test",
+			expected: archive.Sha256,
+		},
+	}
+	for name, test := range table {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			hasher := archive.HasherFromFileName(test.input)
+			expected := reflect.ValueOf(test.expected)
+			actual := reflect.ValueOf(hasher)
+			if expected.Pointer() != actual.Pointer() {
+				t.Fatalf("expected %#v to be %#v", expected, actual)
+			}
+		})
+	}
+}
+
 func TestIsMetaFileName(t *testing.T) {
 	table := map[string]struct {
 		input    string
@@ -152,24 +205,25 @@ func TestIsMetaData(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	largeJsonContent := []byte(fmt.Sprintf(`{"memorybox":{"name":"test"},"data":"%s"}`, make([]byte, archive.MetaFileMaxSize, archive.MetaFileMaxSize)))
-	table := map[string]struct {
+	type testCase struct {
 		hashFn       archive.Hasher
 		data         io.ReadSeeker
 		expectedName string
 		isMetaFile   bool
 		expectedErr  error
-	}{
+	}
+	table := map[string]testCase{
 		"datafile is detected and name is set by hashing input content": {
-			hashFn:       identityHash,
+			hashFn:       testingstore.IdentityHash,
 			data:         filebuffer.New([]byte("test")),
 			expectedName: "test-identity",
 			isMetaFile:   false,
 			expectedErr:  nil,
 		},
-		fmt.Sprintf("metafile is detected and name is set by reading %s if content is memorybox json", archive.MetaFileNameKey): {
-			hashFn:       identityHash,
+		fmt.Sprintf("metafile is detected and name is set by reading %s if content is memorybox json", archive.MetaKeyFileName): {
+			hashFn:       testingstore.IdentityHash,
 			data:         filebuffer.New([]byte(`{"memorybox":{"file":"wacky"}}`)),
-			expectedName: "wacky",
+			expectedName: archive.MetaFileNameFrom("wacky"),
 			isMetaFile:   true,
 			expectedErr:  nil,
 		},
@@ -183,17 +237,18 @@ func TestNew(t *testing.T) {
 			isMetaFile:  false,
 			expectedErr: nil,
 		},
-		"hashing failures are caught": {
-			hashFn: identityHash,
-			data: func() *filebuffer.Buffer {
-				file := filebuffer.New([]byte("test"))
-				file.Close()
-				return file
-			}(),
-			expectedName: "",
-			isMetaFile:   false,
-			expectedErr:  os.ErrClosed,
-		},
+		"hashing failures are caught": func() testCase {
+			err := errors.New("bad time")
+			return testCase{
+				hashFn: func(_ io.Reader) (string, int64, error) {
+					return "", 0, err
+				},
+				data:         filebuffer.New([]byte("test")),
+				expectedName: "",
+				isMetaFile:   false,
+				expectedErr:  err,
+			}
+		}(),
 		"failing to read file during meta check is caught": {
 			// make the hash operation do nothing so it doesn't fail. this
 			// allows the failure to occur in the meta check step
@@ -244,6 +299,43 @@ func TestNewSha256(t *testing.T) {
 	}
 }
 
+func TestFile_MetaFile(t *testing.T) {
+	dataFile, err := archive.NewSha256("test", filebuffer.New([]byte("test")))
+	if err != nil {
+		t.Fatalf("test setup: %s", err)
+	}
+	dataFile.MetaSet("test", "value")
+	metaFile := dataFile.MetaFile()
+	if !metaFile.IsMetaFile() {
+		t.Fatal("expected datafile to become metafile")
+	}
+	if dataFile == metaFile {
+		t.Fatal("expected new instance to be created")
+	}
+	if !reflect.DeepEqual(dataFile.MetaGet("test"), metaFile.MetaGet("test")) {
+		t.Fatal("expected metafile to have copy of source datafile metadata")
+	}
+	if metaFile.MetaFile() != metaFile {
+		t.Fatal("expected metafile to return itself")
+	}
+	metaFile.MetaSet("test", "otherValue")
+	if reflect.DeepEqual(dataFile.MetaGet("test"), metaFile.MetaGet("test")) {
+		t.Fatal("expected metafile to have independent copy of source datafile metadata")
+	}
+}
+
+func TestFile_Source(t *testing.T) {
+	expected := "some-source"
+	file, err := archive.NewSha256(expected, filebuffer.New([]byte("test")))
+	if err != nil {
+		t.Fatalf("test setup: %s", err)
+	}
+	actual := file.Source()
+	if diff := cmp.Diff(expected, actual); diff != "" {
+		t.Fatalf(diff)
+	}
+}
+
 func TestFile_Read(t *testing.T) {
 	type testCase struct {
 		file          *archive.File
@@ -252,7 +344,7 @@ func TestFile_Read(t *testing.T) {
 	table := map[string]testCase{
 		"datafile": func() testCase {
 			bytes := []byte("test")
-			file, err := archive.New("test", filebuffer.New(bytes), identityHash)
+			file, err := archive.New("test", filebuffer.New(bytes), testingstore.IdentityHash)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -263,7 +355,7 @@ func TestFile_Read(t *testing.T) {
 		}(),
 		"metafile": func() testCase {
 			bytes := []byte(`{"memorybox":{"file":"test"}}`)
-			file, err := archive.New("test", filebuffer.New(bytes), identityHash)
+			file, err := archive.New("test", filebuffer.New(bytes), testingstore.IdentityHash)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -301,7 +393,7 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"metakey is immutable for consumers": {
-			key:          archive.MetaFileNameKey,
+			key:          archive.MetaKeyFileName,
 			input:        "anything",
 			expected:     "test-identity",
 			immutableKey: true,
@@ -345,7 +437,7 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			f, err := archive.New("test", filebuffer.New([]byte(`{"memorybox":{"file":"test-identity"}}`)), identityHash)
+			f, err := archive.New("test", filebuffer.New([]byte(`{"memorybox":{"file":"test-identity"}}`)), testingstore.IdentityHash)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}

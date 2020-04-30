@@ -188,3 +188,37 @@ func TestStore_Search(t *testing.T) {
 		t.Fatalf("expected call did not occur")
 	}
 }
+
+func TestStore_SearchContextCancel(t *testing.T) {
+	called := false
+	expectedBucket := "bucket"
+	expectedPrefix := "test"
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := objectstore.New(expectedBucket, &s3mock{
+		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
+			called = true
+			results := make(chan minio.ObjectInfo)
+			if expectedBucket != bucket {
+				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
+			}
+			if expectedPrefix != prefix {
+				t.Fatalf("expected %s as key, got %s", expectedPrefix, prefix)
+			}
+			go func() {
+				results <- minio.ObjectInfo{}
+				close(results)
+			}()
+			return results
+		},
+	}).Search(ctx, expectedPrefix)
+	if !called {
+		t.Fatalf("expected call did not occur")
+	}
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, ctx.Err()) {
+		t.Fatalf("expected error %s, got %s", ctx.Err(), err)
+	}
+}

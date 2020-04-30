@@ -3,10 +3,10 @@ package archive
 import (
 	"encoding/hex"
 	"encoding/json"
-	"github.com/mattetti/filebuffer"
 	hash "github.com/minio/sha256-simd"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"github.com/tkellen/filebuffer"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -37,21 +37,26 @@ type File struct {
 	hasBeenRead bool
 }
 
+// Hasher describes a method that will take a reader and compute a hash of its
+// contents, returning the result as a string and the size of the data that was
+// read.
+type Hasher func(source io.Reader) (string, int64, error)
+
 // MetaKey is the key in metadata json files under which memorybox controls the
 // content automatically.
 const MetaKey = "memorybox"
 
-// MetaFileNameKey refers to the location where memorybox stores the name of the
+// MetaKeyFileName refers to the location where memorybox stores the name of the
 // datafile that a metafile describes.
-const MetaFileNameKey = "memorybox.file"
+const MetaKeyFileName = "memorybox.file"
 
-// MetaFileSourceKey refers to the location where memorybox stores a string
+// MetaKeyFileSource refers to the location where memorybox stores a string
 // value that represents the original source a user supplied when putting a
 // datafile into the store.
-const MetaFileSourceKey = "memorybox.source"
+const MetaKeyFileSource = "memorybox.source"
 
-// MetaFileSizeKey refers to the filesize of the datafile a metafile describes.
-const MetaFileSizeKey = "memorybox.size"
+// MetaKeyFileSize refers to the filesize of the datafile a metafile describes.
+const MetaKeyFileSize = "memorybox.size"
 
 // MetaFilePrefix controls naming for metadata files (which are named the
 // same as the file they describe plus this prefix).
@@ -62,11 +67,6 @@ const MetaFilePrefix = MetaKey + "-meta-"
 // blobs to see if they are memorybox metadata vs just regular ol' json. This
 // value can be increased if a real world use-case dictates it.
 const MetaFileMaxSize = 1 * 1024 * 1024
-
-// Hasher describes a method that will take a reader and compute a hash of its
-// contents, returning the result as a string and the size of the data that was
-// read.
-type Hasher func(source io.Reader) (string, int64, error)
 
 // Sha256 computes a sha256 message digest for a provided io.Reader.
 func Sha256(source io.Reader) (string, int64, error) {
@@ -91,9 +91,29 @@ func DataFileNameFrom(source string) string {
 	return strings.TrimPrefix(source, MetaFilePrefix)
 }
 
+// DataFileNameFromMeta gets the memorybox encoded datafile name from memorybox
+// metadata.
+func DataFileNameFromMeta(content []byte) string {
+	return gjson.GetBytes(content, MetaKeyFileName).String()
+}
+
 // IsMetaFileName determines if a given source string is named like a metafile.
 func IsMetaFileName(source string) bool {
 	return strings.HasPrefix(source, MetaFilePrefix)
+}
+
+// HasherFromFileName returns the hashing function that was expected to be used
+// based on the filename. If no hashing function can be found, it defaults to
+// Sha256.
+func HasherFromFileName(source string) Hasher {
+	parts := strings.Split(source, "-")
+	hash, ok := map[string]Hasher{
+		"sha256": Sha256,
+	}[parts[len(parts)-1]]
+	if !ok {
+		return Sha256
+	}
+	return hash
 }
 
 // IsMetaData determines if a given set of bytes contains json that matches
@@ -106,8 +126,9 @@ func IsMetaData(bytes []byte) bool {
 // new creates a bare file.
 func new(source string) *File {
 	return &File{
-		meta:   []byte(`{}`),
-		source: source,
+		meta:       []byte(`{}`),
+		source:     source,
+		isMetaFile: false,
 	}
 }
 
@@ -135,10 +156,10 @@ func New(source string, data io.ReadSeeker, hash Hasher) (*File, error) {
 			return nil, err
 		}
 		// Ensure the reader can be read again.
-		data.Seek(0, 0)
+		data.Seek(0, io.SeekStart)
 		if IsMetaData(bytes) {
 			// The metadata contains the name of the file it describes. Use it.
-			f.name = gjson.GetBytes(bytes, MetaFileNameKey).String()
+			f.name = MetaFileNameFrom(gjson.GetBytes(bytes, MetaKeyFileName).String())
 			// Set the metadata of this file to match the content.
 			f.meta = bytes
 			// Mark this a a metafile so converting it doesn't overwrite
@@ -156,6 +177,9 @@ func NewSha256(source string, data io.ReadSeeker) (*File, error) {
 // MetaFile creates a metadata "pair" for a source data file. When metadata
 // files are read, they stream a json representation of their meta field.
 func (f *File) MetaFile() *File {
+	if f.IsMetaFile() {
+		return f
+	}
 	// Metafiles have the same name as the data file they describe + a prefix.
 	name := MetaFileNameFrom(f.name)
 	metaFile := new(f.source)
@@ -163,12 +187,10 @@ func (f *File) MetaFile() *File {
 	metaFile.isMetaFile = true
 	// If the source file had metadata set on it, bring a copy.
 	metaFile.meta = f.meta
-	if !f.IsMetaFile() {
-		// Assign values for memory-box-managed keys.
-		metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaFileNameKey, f.name)
-		metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaFileSourceKey, f.source)
-		metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaFileSizeKey, f.size)
-	}
+	// Assign values for memory-box-managed keys.
+	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyFileName, f.name)
+	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyFileSource, f.source)
+	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyFileSize, f.size)
 	return metaFile
 }
 

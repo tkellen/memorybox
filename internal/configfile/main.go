@@ -9,8 +9,7 @@ import (
 // Target describes a single target in the memorybox configuration file.
 type Target map[string]string
 
-// ConfigFile combines the File and Flags structs to create a unified understanding
-// of a request being made from the command line.
+// ConfigFile holds configuration data for various memorybox target stores.
 type ConfigFile struct {
 	Targets map[string]Target `yaml:"targets"`
 }
@@ -35,13 +34,13 @@ func (config *ConfigFile) String() string {
 // Target finds the requested target, creating one if needed.
 func (config *ConfigFile) Target(name string) *Target {
 	targets := config.Targets
-	// If there are no targets yet, we are likely running for the first time on
-	// a new computer. Instantiate the config.File.Target struct.
+	// If there are no targets yet, we are likely running for the first time.
+	// Instantiate the config.File.Target struct.
 	if targets == nil {
 		config.Targets = map[string]Target{}
 		targets = config.Targets
 	}
-	// If we found the target we want in our existing config, return it now.
+	// If a target is found in the existing config, return it now.
 	if targeted, ok := targets[name]; ok {
 		return &targeted
 	}

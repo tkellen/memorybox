@@ -2,6 +2,7 @@ package fetch
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/hashicorp/go-retryablehttp"
 	"io"
@@ -36,6 +37,8 @@ type sys struct {
 	TempDir  string
 }
 
+var errBadRequest = errors.New("bad request")
+
 func new(ctx context.Context) *sys {
 	return &sys{
 		Get: func(url string) (*http.Response, error) {
@@ -65,10 +68,10 @@ func (sys *sys) fetch(req string) (*os.File, bool, error) {
 	if u, err := url.Parse(req); err == nil && u.Scheme != "" && u.Host != "" {
 		resp, getErr := sys.Get(req)
 		if getErr != nil {
-			return nil, false, getErr
+			return nil, false, fmt.Errorf("%w: %s", errBadRequest, getErr)
 		}
 		if !(resp.StatusCode >= 200 && resp.StatusCode <= 299) {
-			return nil, false, fmt.Errorf("http code: %d", resp.StatusCode)
+			return nil, false, fmt.Errorf("%w: %d", errBadRequest, resp.StatusCode)
 		}
 		return sys.bufferToTempFile(resp.Body)
 	}

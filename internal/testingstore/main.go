@@ -1,29 +1,38 @@
 package testingstore
 
 import (
-	"bytes"
 	"context"
 	"fmt"
+	"github.com/tkellen/filebuffer"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io"
 	"io/ioutil"
 	"strings"
 	"sync"
-	"testing/iotest"
 )
 
 // Store is a in-memory implementation of Store for testing.
 type Store struct {
-	Data                    sync.Map
-	GetErrorWith            error
-	SearchErrorWith         error
-	GetReturnsTimeoutReader bool
+	Data                   sync.Map
+	GetErrorWith           error
+	SearchErrorWith        error
+	GetReturnsClosedReader bool
 }
 
 // Fixture defines a fixture.
 type Fixture struct {
 	Name    string
 	Content []byte
+}
+
+// IdentityHash is a noop hashing function for testing that returns a string
+// value of the input (assumes ASCII input).
+func IdentityHash(source io.Reader) (string, int64, error) {
+	bytes, err := ioutil.ReadAll(source)
+	if err != nil {
+		return "", 0, err
+	}
+	return string(bytes) + "-identity", int64(len(bytes)), nil
 }
 
 // New returns a Store pre-filled with supplied fixtures.
@@ -75,10 +84,11 @@ func (s *Store) Get(_ context.Context, request string) (io.ReadCloser, error) {
 		return nil, s.GetErrorWith
 	}
 	if data, ok := s.Data.Load(request); ok {
-		if s.GetReturnsTimeoutReader {
-			return ioutil.NopCloser(iotest.TimeoutReader(bytes.NewReader(data.([]byte)))), nil
+		file := filebuffer.New(data.([]byte))
+		if s.GetReturnsClosedReader {
+			file.Close()
 		}
-		return ioutil.NopCloser(bytes.NewReader(data.([]byte))), nil
+		return file, nil
 	}
 	return nil, fmt.Errorf("not found")
 }

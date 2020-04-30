@@ -1,4 +1,4 @@
-package memorybox
+package store
 
 import (
 	"context"
@@ -11,27 +11,22 @@ import (
 	"sync"
 )
 
-// Put persists any number of requested inputs to a store with concurrency
-// control in place.
+// Put persists any number of requested inputs to a store at a user-defined
+// level of concurrency.
 //
 // A note about the complexity of this function:
 //
-// Memorybox creates and persists a json-encoded metafile automatically
-// alongside any new datafile being "put" into a store. This makes a store
-// nothing more than a flat directory of content-hash-named datafiles, and
-// metafiles that describe them. This work is done concurrently up to a
-// maximum number of in-flight requests controlled by the user.
+// Memorybox automatically creates json-encoded metafiles to track user-defined
+// metadata for every file in storage. If a user tries to put a datafile AND
+// its metafile pair into a store in a single call (this should be rare, but
+// using memorybox to move the raw content of one store into another is a valid
+// use-case that would cause this), a race condition can occur where a metafile
+// is overwritten by a concurrent goroutine storing a datafile.
 //
-// As a result, if a user tries to put a datafile AND its metafile pair into
-// a store in a single call (this should be rare, but using memorybox to
-// move the raw content of one store into another is a valid use case), a
-// race condition can occur where the metafile is overwritten by a concurrent
-// goroutine creating one to pair with the datafile.
-//
-// This is solved by persisting all metadata files in any single request
-// last. Two instances of memorybox being run at the same time, both
-// copying the contents of one store to another could still suffer from this
-// problem. Seems unlikely...
+// This is solved by persisting all metadata files in any single request last.
+// Two instances of memorybox being run at the same time, both copying the
+// content of one store to another could still suffer from this problem. Seems
+// unlikely...
 func Put(
 	ctx context.Context,
 	store Store,
@@ -44,22 +39,31 @@ func Put(
 	// into the store. Detect if that is happening and make it easy to reason
 	// about a bit further down.
 	inlineMeta := len(metadata) > 0
-	// Prepare a channel to receive any metafiles being persisted to the store.
-	// These are queued to be sent last to ensure they trump any automatically
-	// generated ones.
+	// Prepare a channel to receive any metafiles being manually persisted to
+	// the store. These are queued to be sent last to ensure they trump any
+	// automatically generated ones.
 	queue := make(chan *archive.File)
 	// Preprocess all files as described above.
-	preprocess, preprocessCtx := errgroup.WithContext(ctx)
-	preprocess.Go(func() error {
+	datafiles, datafilesCtx := errgroup.WithContext(ctx)
+	datafiles.Go(func() error {
 		sem := semaphore.NewWeighted(int64(concurrency))
 		for index, item := range requests {
-			if err := sem.Acquire(preprocessCtx, 1); err != nil {
+			if err := sem.Acquire(datafilesCtx, 1); err != nil {
 				return err
 			}
 			index := index
 			item := item // https://golang.org/doc/faq#closures_and_goroutines
-			preprocess.Go(func() error {
+			datafiles.Go(func() error {
 				defer sem.Release(1)
+				// If the source data is arriving from a location that does not
+				// originate on the machine where memorybox is running (e.g. a
+				// user instructing memorybox to store data at a URL) the fetch
+				// function will store it in a temporary file. This ensures the
+				// content can be be read multiple times (once for hashing, once
+				// for checking to see if it contains metadata and lastly to
+				// actually send it to the store). In cases where a temporary
+				// file has been created, `deleteWhenDone` will be true and the
+				// consumer must delete the file when work with it is complete.
 				data, deleteWhenDone, fetchErr := fetch.Do(ctx, item)
 				if fetchErr != nil {
 					return fetchErr
@@ -72,12 +76,13 @@ func Put(
 				if err != nil {
 					return err
 				}
+				// If metadata has been supplied by the user, insert it into the
+				// file now.
 				if inlineMeta {
 					file.MetaSet("", metadata[index])
 				}
-				// Store metadata files that are explicitly being copied using
-				// memorybox to prevent data races with them being automatically
-				// created by memorybox.
+				// Queue metadata files that are explicitly being copied using
+				// memorybox so they can be persisted last.
 				if file.IsMetaFile() {
 					queue <- file
 					return nil
@@ -88,7 +93,7 @@ func Put(
 		}
 		return nil
 	})
-	// Collect all metafiles coming out of the preprocess step.
+	// Collect all metafiles coming out of the datafile step.
 	collector := sync.WaitGroup{}
 	collector.Add(1)
 	var metaFiles []*archive.File
@@ -98,14 +103,14 @@ func Put(
 			metaFiles = append(metaFiles, file)
 		}
 	}()
-	if err := preprocess.Wait(); err != nil {
+	if err := datafiles.Wait(); err != nil {
 		return err
 	}
 	close(queue)
 	// Wait for all metafiles to be collected from the queue.
 	collector.Wait()
-	// Any datafiles have now been stored. Any metafiles that were put manually
-	// should be persisted now/last.
+	// Any datafiles have now been stored. Now persist any metafiles the user
+	// explicitly provided.
 	metaFileGroup, metaFileCtx := errgroup.WithContext(ctx)
 	metaFileGroup.Go(func() error {
 		sem := semaphore.NewWeighted(int64(concurrency))
@@ -145,7 +150,7 @@ func putFile(ctx context.Context, store Store, file *archive.File, logger *log.L
 		logger.Printf("%s -> %s", file.Source(), file.Name())
 		return store.Put(ctx, file, file.Name())
 	})
-	// Create metafile silently (only if required).
+	// Create a metafile silently if one doesn't already exist.
 	eg.Go(func() error {
 		metaFile := file.MetaFile()
 		if store.Exists(ctx, metaFile.Name()) {

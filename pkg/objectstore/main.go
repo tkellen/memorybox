@@ -67,13 +67,13 @@ func (s *Store) Search(ctx context.Context, search string) ([]string, error) {
 	objects := s.Client.ListObjects(s.Bucket, search, true, done)
 	for object := range objects {
 		if ctx.Err() != nil {
-			close(done)
+			break
 		}
 		if object.Err == nil {
 			matches = append(matches, object.Key)
 		}
 	}
-	return matches, nil
+	return matches, ctx.Err()
 }
 
 // Exists determines if a given file exists in the object store already.

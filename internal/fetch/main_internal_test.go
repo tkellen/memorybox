@@ -4,12 +4,11 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/mattetti/filebuffer"
+	"github.com/tkellen/filebuffer"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"path"
-	"strings"
 	"testing"
 )
 
@@ -56,7 +55,7 @@ func Test_fetch(t *testing.T) {
 				sys.Get = http.Get
 				return sys
 			}(),
-			expectedErr: errors.New("no such host"),
+			expectedErr: errBadRequest,
 		},
 		"fail on non-200 http response from url input": {
 			input: "http://totally.legit",
@@ -76,7 +75,7 @@ func Test_fetch(t *testing.T) {
 				}
 				return sys
 			}(),
-			expectedErr: errors.New("http code: 400"),
+			expectedErr: errBadRequest,
 		},
 		"fail on inability to buffer streaming input to disk": {
 			input: "-",
@@ -106,7 +105,7 @@ func Test_fetch(t *testing.T) {
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
-			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
+			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
 			if err == nil {

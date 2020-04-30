@@ -17,9 +17,6 @@ import (
 type CLIRunner interface {
 	// ConfigPath should return a path to a configuration file to read.
 	ConfigPath() string
-	// TempPath should return a path to a temporary directory the application
-	// will use while running.
-	TempPath() string
 	// Configure receives the contents (if any) of the file referenced by
 	// running ConfigPath. The concrete implementation of this interface should
 	// load it  as needed and run any other startup steps required here.
@@ -40,12 +37,11 @@ type CLIRunner interface {
 
 // Run coordinates with all methods in the Runner interface to complete the
 // cycle of running a command line application. This includes the following:
-// 1. Ensuring a temporary directory exists before running.
-// 2. Ensuring a configuration directory exists before running.
-// 3. Ensuring a configuration file is created/opened in read/write mode.
-// 4. Runs our application.
-// 5. Notifies our application if it needs to shut down in response to SIGTERM.
-// 6. Removing the temporary directory and all of its contents before exiting.
+// 1. Ensuring a configuration directory exists before running.
+// 2. Ensuring a configuration file is created/opened in read/write mode.
+// 3. Runs our application.
+// 4. Notifies our application if it needs to shut down in response to SIGTERM.
+// 5. Removing the temporary directory and all of its contents before exiting.
 // 6. If running the application changed the configuration, persisting to the
 //    configuration file.
 func Run(cli CLIRunner, args []string) error {
@@ -56,12 +52,6 @@ func Run(cli CLIRunner, args []string) error {
 		<-c
 		cli.Terminate()
 	}()
-	// Ensure temporary directory exists.
-	if err := os.MkdirAll(cli.TempPath(), 0755); err != nil {
-		return err
-	}
-	// Ensure temporary directory is removed when we're done working.
-	defer os.RemoveAll(cli.TempPath())
 	// Find full path to configuration file.
 	fullPath, _ := homedir.Expand(cli.ConfigPath())
 	// Ensure configuration directory exists.
@@ -82,7 +72,7 @@ func Run(cli CLIRunner, args []string) error {
 	// when we are done.
 	defer func() {
 		// Force truncating this is probably a bad plan. Fix this!
-		file.Seek(0, 0)
+		file.Seek(0, io.SeekStart)
 		file.Truncate(0)
 		cli.SaveConfig(file)
 		file.Close()

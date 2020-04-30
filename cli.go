@@ -5,11 +5,10 @@ import (
 	"fmt"
 	"github.com/docopt/docopt-go"
 	"github.com/tkellen/memorybox/internal/configfile"
-	"github.com/tkellen/memorybox/lib"
+	"github.com/tkellen/memorybox/pkg/store"
 	"io"
 	"log"
 	"os"
-	"path"
 	"time"
 )
 
@@ -69,9 +68,8 @@ type Runner struct {
 	Logger     *log.Logger
 	ConfigFile *configfile.ConfigFile
 	Flags      Flags
-	Store      memorybox.Store
+	Store      store.Store
 	PathConfig string
-	PathTemp   string
 }
 
 // New creates a runner with all the required configuration.
@@ -82,7 +80,6 @@ func New(logger *log.Logger) *Runner {
 		cancel:     cancel,
 		Logger:     logger,
 		PathConfig: "~/.memorybox/config",
-		PathTemp:   path.Join(os.TempDir(), "memorybox"),
 	}
 }
 
@@ -91,15 +88,8 @@ func (run *Runner) ConfigPath() string {
 	return run.PathConfig
 }
 
-// TempPath returns the path to a temp directory used during put operations
-// where content must be temporarily buffered to local disk.
-func (run *Runner) TempPath() string {
-	return run.PathTemp
-}
-
 // Configure is responsible parsing what was provided on the command line.
 func (run *Runner) Configure(args []string, configData io.Reader) error {
-	// Instantiate flags from command line arguments.
 	var err error
 	// Respect what the user named the binary.
 	usage := fmt.Sprintf(usageTemplate, args[0])
@@ -126,7 +116,7 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 	if !run.Flags.Config {
 		// Only create a backing store if we're going to interact with one.
 		target := run.ConfigFile.Target(run.Flags.Target)
-		store, storeErr := memorybox.NewStore(*target)
+		store, storeErr := store.New(*target)
 		if storeErr != nil {
 			return fmt.Errorf("failed to load %v: %s", target, storeErr)
 		}
@@ -139,16 +129,16 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 func (run *Runner) Dispatch() error {
 	f := run.Flags
 	if f.Put {
-		return memorybox.Put(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
+		return store.Put(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
 	}
 	if f.Import {
-		return memorybox.Import(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger)
+		return store.Import(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger)
 	}
 	if f.Index {
-		return memorybox.Index(run.ctx, run.Store, run.Flags.Concurrency, run.Logger, os.Stdout)
+		return store.Index(run.ctx, run.Store, run.Flags.Concurrency, run.Logger, false, os.Stdout)
 	}
 	if f.Get {
-		return memorybox.Get(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
+		return store.Get(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
 	}
 	if f.Config {
 		if f.Delete {
@@ -168,12 +158,12 @@ func (run *Runner) Dispatch() error {
 	}
 	if f.Meta {
 		if f.Delete {
-			return memorybox.MetaDelete(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key)
+			return store.MetaDelete(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key)
 		}
 		if f.Set {
-			return memorybox.MetaSet(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
+			return store.MetaSet(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
 		}
-		return memorybox.MetaGet(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
+		return store.MetaGet(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
 	}
 	return fmt.Errorf("command not implemented")
 }

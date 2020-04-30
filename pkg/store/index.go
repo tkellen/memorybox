@@ -1,4 +1,4 @@
-package memorybox
+package store
 
 import (
 	"bytes"
@@ -6,14 +6,12 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/tidwall/gjson"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"io"
 	"io/ioutil"
 	"log"
-	"sort"
 	"strings"
 	"sync"
 )
@@ -22,7 +20,8 @@ type jsonIndex struct {
 	Memorybox []json.RawMessage `json:"memorybox"`
 }
 
-// Index writes a json-formatted index to the provided sink in the form of:
+// Index creates a json-encoded array of all metafile contents and writes it to
+// a provided sink.
 // ```
 // {
 //   "memorybox": [
@@ -39,15 +38,14 @@ type jsonIndex struct {
 //   ]
 // }
 // ```
-func Index(ctx context.Context, store Store, concurrency int, logger *log.Logger, sink io.Writer) error {
-	data, indexErr := index(ctx, store, concurrency, logger, false)
+func Index(ctx context.Context, store Store, concurrency int, logger *log.Logger, integrityChecking bool, sink io.Writer) error {
+	data, indexErr := index(ctx, store, concurrency, logger, integrityChecking)
 	if indexErr != nil {
 		return indexErr
 	}
-	result, err := json.Marshal(jsonIndex{Memorybox: data})
-	if err != nil {
-		return err
-	}
+	// This is performed here rather than within the index function because
+	// Import uses the results from index directly.
+	result, _ := json.Marshal(jsonIndex{Memorybox: data})
 	_, copyErr := io.Copy(sink, bytes.NewBuffer(result))
 	if copyErr != nil {
 		return copyErr
@@ -65,7 +63,7 @@ func index(ctx context.Context, store Store, concurrency int, logger *log.Logger
 	// there isn't so consumers can fix.
 	datafiles, metafiles, err := collateStore(ctx, store)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("%w: %s", errCorrupted, err)
 	}
 	logger.Printf("indexing datafiles/metafiles (%d/%d) ", len(datafiles), len(metafiles))
 	// Create channel to receive index entries
@@ -110,39 +108,39 @@ func index(ctx context.Context, store Store, concurrency int, logger *log.Logger
 	return data, nil
 }
 
-// indexItem extracts metadata for the supplied data file. This process includes
-// an optional integrity check where the data file is re-hashed to confirm it
-// has not become corrupted.
+// indexItem performs optional integrity checking on datafiles, mandatory
+// integrity checking on their associated metafiles (simply because it is fast
+// and easy to do so) and then returns the content of the metafile as a
+// json.RawMessage.
 func indexItem(ctx context.Context, store Store, name string, integrityChecking bool) (json.RawMessage, error) {
+	hash := archive.HasherFromFileName(name)
 	if integrityChecking {
-		dataReader, dataErr := store.Get(ctx, name)
-		if dataErr != nil {
-			return nil, dataErr
+		reader, err := store.Get(ctx, name)
+		if err != nil {
+			return nil, err
 		}
-		digest, _, hashErr := archive.Sha256(dataReader)
+		digest, _, hashErr := hash(reader)
 		if hashErr != nil {
 			return nil, hashErr
 		}
-		dataReader.Close()
+		reader.Close()
 		if name != digest {
-			return nil, fmt.Errorf("%s should be named %s, possible data corruption", name, digest)
+			return nil, fmt.Errorf("%w: %s should be named %s, possible data corruption", errCorrupted, name, digest)
 		}
 	}
-	metaName := archive.MetaFileNameFrom(name)
-	metaReader, metaErr := store.Get(ctx, metaName)
-	if metaErr != nil {
-		return nil, metaErr
+	metaFileName := archive.MetaFileNameFrom(name)
+	reader, err := store.Get(ctx, metaFileName)
+	if err != nil {
+		return nil, err
 	}
-	content, readErr := ioutil.ReadAll(metaReader)
+	content, readErr := ioutil.ReadAll(reader)
 	if readErr != nil {
 		return nil, readErr
 	}
-	metaReader.Close()
-	fileKey := archive.MetaKey + ".file"
-	dataFileInContent := gjson.GetBytes(content, fileKey).String()
-	dataFileInName := archive.DataFileNameFrom(name)
-	if dataFileInName != dataFileInContent {
-		return nil, fmt.Errorf("%s's key %s points %s (conflicts with metafile name)", name, fileKey, dataFileInContent)
+	reader.Close()
+	dataFileName := archive.DataFileNameFromMeta(content)
+	if dataFileName != name {
+		return nil, fmt.Errorf("%w: %s conflictingly points to %s", errCorrupted, name, dataFileName)
 	}
 	return content, nil
 }
@@ -153,7 +151,6 @@ func indexItem(ctx context.Context, store Store, name string, integrityChecking 
 // fail.
 func collateStore(ctx context.Context, store Store) (datafiles map[string]struct{}, metafiles map[string]struct{}, err error) {
 	files, _ := store.Search(ctx, "*")
-	sort.Strings(files)
 	datafiles = map[string]struct{}{}
 	metafiles = map[string]struct{}{}
 	for _, file := range files {

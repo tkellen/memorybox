@@ -1,10 +1,11 @@
-package memorybox
+package store
 
 import (
 	"bufio"
 	"context"
 	"fmt"
 	"github.com/tidwall/gjson"
+	"github.com/tkellen/memorybox/internal/fetch"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
 	"log"
@@ -23,12 +24,16 @@ type importEntry struct {
 // ```
 // path/to/file.jpg {"title":"some file on my machine"}
 // https://images.com/photo.jpg {"title":"some photo on the internet"}
-// https://images.com/audio.mp3 {"title":"some mp3 on the internet"}
+// https://audio.com/audio.mp3 {"title":"some mp3 on the internet"}
 // ```
 // Import will intelligently de-dupe manifests and remove entries that already
 // appear in the store as being sourced from the filepath or URL in the manifest
 // file.
-func Import(ctx context.Context, store Store, requests []string, concurrency int, logger *log.Logger) error {
+func Import(ctx context.Context, store Store, inputs []string, concurrency int, logger *log.Logger) error {
+	imports, err := collectImports(ctx, inputs)
+	if err != nil {
+		return err
+	}
 	// Get all metadata entries from the store.
 	index, indexErr := index(ctx, store, concurrency, logger, false)
 	if indexErr != nil {
@@ -39,11 +44,6 @@ func Import(ctx context.Context, store Store, requests []string, concurrency int
 	for _, entry := range index {
 		source := gjson.GetBytes(entry, archive.MetaKey+".source").String()
 		sourceIndex[source] = true
-	}
-	// Read all import files concurrently.
-	imports, collectErr := collectImports(ctx, requests)
-	if collectErr != nil {
-		return collectErr
 	}
 	// Filter duplicate import lines / any with a source that exists already.
 	var putRequests []string
@@ -75,22 +75,24 @@ func Import(ctx context.Context, store Store, requests []string, concurrency int
 }
 
 // collectImports reads all input files supplied to the import function
-// concurrently, aggregating them into a map keyed by their request
-// string.
-func collectImports(ctx context.Context, requests []string) ([]importEntry, error) {
+// concurrently, aggregating them into an array of ImportEntries.
+func collectImports(ctx context.Context, inputs []string) ([]importEntry, error) {
 	// Start a collector goroutine to receive all entries.
 	entries := make(chan importEntry)
 	// Process every import file concurrently.
 	process, _ := errgroup.WithContext(ctx)
-	for _, item := range requests {
+	for _, item := range inputs {
 		process.Go(func() error {
-			file, err := os.Open(item)
-			if err != nil {
-				return err
+			file, deleteOnClose, fetchErr := fetch.Do(ctx, item)
+			if fetchErr != nil {
+				return fetchErr
+			}
+			if deleteOnClose {
+				defer os.Remove(file.Name())
 			}
 			scanner := bufio.NewScanner(file)
 			for scanner.Scan() {
-				fields := strings.SplitN(scanner.Text(), " ", 2)
+				fields := strings.SplitN(scanner.Text(), "\t", 2)
 				entries <- importEntry{
 					Request:  fields[0],
 					Metadata: fields[1],

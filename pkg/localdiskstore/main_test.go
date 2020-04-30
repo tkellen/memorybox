@@ -1,7 +1,7 @@
 // These are integration tests which validate the minimal domain specific error
 // handling this store layers over the golang standard libraries for os-agnostic
 // path resolution and disk io. Mocking out the filesystem for this (as seen in
-// the archive package) seemed like overkill.
+// the fetch package) seemed like overkill.
 package localdiskstore_test
 
 import (
