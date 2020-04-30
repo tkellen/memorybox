@@ -5,7 +5,7 @@ import (
 	"context"
 	"fmt"
 	"github.com/tidwall/gjson"
-	"github.com/tkellen/memorybox/internal/archive"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
 	"log"
 	"os"
@@ -28,7 +28,7 @@ type importEntry struct {
 // Import will intelligently de-dupe manifests and remove entries that already
 // appear in the store as being sourced from the filepath or URL in the manifest
 // file.
-func Import(ctx context.Context, store Store, hashFn hashFn, requests []string, concurrency int, logger *log.Logger) error {
+func Import(ctx context.Context, store Store, requests []string, concurrency int, logger *log.Logger) error {
 	// Get all metadata entries from the store.
 	index, indexErr := index(ctx, store, concurrency, logger, false)
 	if indexErr != nil {
@@ -71,7 +71,7 @@ func Import(ctx context.Context, store Store, hashFn hashFn, requests []string, 
 		putMetadatas = append(putMetadatas, entry.Metadata)
 	}
 	logger.Printf("queued: %d, duplicates removed: %d, existing removed: %d", len(putRequests), dupeImportCount, inStoreAlreadyCount)
-	return PutMany(ctx, store, hashFn, putRequests, concurrency, logger, putMetadatas)
+	return Put(ctx, store, putRequests, concurrency, logger, putMetadatas)
 }
 
 // collectImports reads all input files supplied to the import function

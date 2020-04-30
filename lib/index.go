@@ -7,7 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tidwall/gjson"
-	"github.com/tkellen/memorybox/internal/archive"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"io"
@@ -119,7 +119,7 @@ func indexItem(ctx context.Context, store Store, name string, integrityChecking 
 		if dataErr != nil {
 			return nil, dataErr
 		}
-		digest, _, hashErr := Sha256(dataReader)
+		digest, _, hashErr := archive.Sha256(dataReader)
 		if hashErr != nil {
 			return nil, hashErr
 		}
@@ -128,7 +128,7 @@ func indexItem(ctx context.Context, store Store, name string, integrityChecking 
 			return nil, fmt.Errorf("%s should be named %s, possible data corruption", name, digest)
 		}
 	}
-	metaName := archive.ToMetaFileName(name)
+	metaName := archive.MetaFileNameFrom(name)
 	metaReader, metaErr := store.Get(ctx, metaName)
 	if metaErr != nil {
 		return nil, metaErr
@@ -140,7 +140,7 @@ func indexItem(ctx context.Context, store Store, name string, integrityChecking 
 	metaReader.Close()
 	fileKey := archive.MetaKey + ".file"
 	dataFileInContent := gjson.GetBytes(content, fileKey).String()
-	dataFileInName := archive.ToDataFileName(name)
+	dataFileInName := archive.DataFileNameFrom(name)
 	if dataFileInName != dataFileInContent {
 		return nil, fmt.Errorf("%s's key %s points %s (conflicts with metafile name)", name, fileKey, dataFileInContent)
 	}
@@ -165,13 +165,13 @@ func collateStore(ctx context.Context, store Store) (datafiles map[string]struct
 	}
 	var missing []string
 	for item := range datafiles {
-		pair := archive.ToMetaFileName(item)
+		pair := archive.MetaFileNameFrom(item)
 		if _, ok := metafiles[pair]; !ok {
 			missing = append(missing, fmt.Sprintf("datafile %s missing metafile %s", item, pair))
 		}
 	}
 	for item := range metafiles {
-		pair := archive.ToDataFileName(item)
+		pair := archive.DataFileNameFrom(item)
 		if _, ok := datafiles[pair]; !ok {
 			missing = append(missing, fmt.Sprintf("metafile %s missing datafile %s", item, pair))
 		}

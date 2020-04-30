@@ -1,10 +1,10 @@
-package archive
+package fetch
 
 import (
 	"bytes"
 	"context"
 	"errors"
-	"io"
+	"github.com/mattetti/filebuffer"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -13,41 +13,26 @@ import (
 	"testing"
 )
 
-// identityHash is a noop hashing function for testing that returns a string
-// value of the input (assumes ASCII input).
-func identityHash(source io.Reader) (string, int64, error) {
-	bytes, err := ioutil.ReadAll(source)
-	if err != nil {
-		return "", 0, err
-	}
-	return string(bytes) + "-identity", int64(len(bytes)), nil
-}
-
-func TestFile_init(t *testing.T) {
+func Test_fetch(t *testing.T) {
 	expectedBytes := []byte("test")
-	tempFile, tempFileErr := ioutil.TempFile(os.TempDir(), "*")
-	if tempFileErr != nil {
-		t.Fatalf("test setup: %s", tempFileErr)
-	}
-	defer os.Remove(tempFile.Name())
 	table := map[string]struct {
-		ctx         context.Context
-		input       interface{}
-		setup       func(sys *sys)
+		input       string
+		sys         *sys
 		expectedErr error
 	}{
 		"success from stdin": {
-			ctx:   context.Background(),
 			input: "-",
-			setup: func(sys *sys) {
+			sys: func() *sys {
+				sys := new(context.Background())
 				sys.Stdin = ioutil.NopCloser(bytes.NewReader(expectedBytes))
-			},
+				return sys
+			}(),
 			expectedErr: nil,
 		},
 		"success from url": {
-			ctx:   context.Background(),
 			input: "http://totally.legit",
-			setup: func(sys *sys) {
+			sys: func() *sys {
+				sys := new(context.Background())
 				// Mock every http request to contain our expected bytes.
 				sys.Get = func(url string) (resp *http.Response, err error) {
 					return &http.Response{
@@ -60,21 +45,23 @@ func TestFile_init(t *testing.T) {
 						ContentLength: int64(len(expectedBytes)),
 					}, nil
 				}
-			},
+				return sys
+			}(),
 			expectedErr: nil,
 		},
 		"fail on inability to make http request for input url": {
-			ctx:   context.Background(),
 			input: "http://that.is.not.a.valid.url",
-			setup: func(sys *sys) {
+			sys: func() *sys {
+				sys := new(context.Background())
 				sys.Get = http.Get
-			},
+				return sys
+			}(),
 			expectedErr: errors.New("no such host"),
 		},
 		"fail on non-200 http response from url input": {
-			ctx:   context.Background(),
 			input: "http://totally.legit",
-			setup: func(sys *sys) {
+			sys: func() *sys {
+				sys := new(context.Background())
 				// Mock every http request to fail with a 400 error code.
 				sys.Get = func(url string) (resp *http.Response, err error) {
 					return &http.Response{
@@ -87,42 +74,35 @@ func TestFile_init(t *testing.T) {
 						ContentLength: int64(len(expectedBytes)),
 					}, nil
 				}
-			},
+				return sys
+			}(),
 			expectedErr: errors.New("http code: 400"),
 		},
-		"fail on inability to create temporary directory": {
-			ctx:   context.Background(),
-			input: "-",
-			setup: func(sys *sys) {
-				sys.TempDirBase = path.Join("tmp", "nope", "bad")
-			},
-			expectedErr: os.ErrNotExist,
-		},
 		"fail on inability to buffer streaming input to disk": {
-			ctx:   context.Background(),
 			input: "-",
-			setup: func(sys *sys) {
+			sys: func() *sys {
+				sys := new(context.Background())
 				sys.TempDir = path.Join("tmp", "nope", "bad")
-			},
+				return sys
+			}(),
 			expectedErr: os.ErrNotExist,
 		},
-		"fail on inability to open file to check if it is a metafile": {
-			ctx:   context.Background(),
-			input: ioutil.NopCloser(bytes.NewBuffer(expectedBytes)),
-			setup: func(sys *sys) {
-				sys.ReadFile = func(name string) ([]byte, error) {
-					return nil, errors.New("bad time")
-				}
-			},
-			expectedErr: errors.New("detecting metafile"),
+		"fail on inability to copy data to temp file": {
+			input: "-",
+			sys: func() *sys {
+				file := filebuffer.New([]byte("test"))
+				file.Close()
+				sys := new(context.Background())
+				sys.Stdin = file
+				return sys
+			}(),
+			expectedErr: os.ErrClosed,
 		},
 	}
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			f := new(test.ctx, identityHash)
-			test.setup(f.sys)
-			f, err := f.init(test.ctx, test.input)
+			file, deleteWhenDone, err := test.sys.fetch(test.input)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -130,8 +110,11 @@ func TestFile_init(t *testing.T) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
 			if err == nil {
-				defer f.Close()
-				actualBytes, readErr := ioutil.ReadAll(f)
+				if deleteWhenDone {
+					defer os.Remove(file.Name())
+				}
+				defer file.Close()
+				actualBytes, readErr := ioutil.ReadAll(file)
 				if readErr != nil {
 					t.Fatal(err)
 				}
@@ -140,14 +123,5 @@ func TestFile_init(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-func TestFile_Close(t *testing.T) {
-	f := new(context.Background(), identityHash)
-	// a temp directory that cannot be cleaned up by os.RemoveAll
-	f.sys.TempDir = "/tmp/."
-	if err := f.Close(); err == nil {
-		t.Fatal("expected error removing temporary directory")
 	}
 }

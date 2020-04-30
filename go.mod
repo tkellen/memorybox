@@ -7,6 +7,7 @@ require (
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
 	github.com/google/go-cmp v0.4.0
 	github.com/hashicorp/go-retryablehttp v0.6.6
+	github.com/mattetti/filebuffer v0.0.0-20200430022056-aa3dd418be64
 	github.com/minio/minio-go/v6 v6.0.55
 	github.com/minio/sha256-simd v0.1.1
 	github.com/mitchellh/go-homedir v1.1.0

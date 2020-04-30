@@ -19,6 +19,7 @@ func Get(ctx context.Context, store Store, hash string, sink io.Writer) error {
 	if err != nil {
 		return err
 	}
+	defer data.Close()
 	if _, err := io.Copy(sink, data); err != nil {
 		return err
 	}

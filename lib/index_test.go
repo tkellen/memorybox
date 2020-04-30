@@ -5,10 +5,10 @@ import (
 	"context"
 	"errors"
 	"github.com/google/go-cmp/cmp"
-	"github.com/tkellen/memorybox/internal/archive"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/lib"
-	"github.com/tkellen/memorybox/pkg/index"
-	"github.com/tkellen/memorybox/pkg/testingstore"
+	"github.com/tkellen/memorybox/internal/index"
+	"github.com/tkellen/memorybox/internal/testingstore"
 	"strings"
 	"testing"
 )

@@ -5,26 +5,14 @@ import (
 	"errors"
 	"github.com/acomagu/bufpipe"
 	"github.com/google/go-cmp/cmp"
+	"github.com/mattetti/filebuffer"
+	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/lib"
-	"github.com/tkellen/memorybox/pkg/testingstore"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"io/ioutil"
-	"path"
 	"strings"
 	"testing"
 )
-
-func fixtures(tempDir string, fixtures []testingstore.Fixture) ([]string, error) {
-	files := make([]string, len(fixtures))
-	for index, fixture := range fixtures {
-		filepath := path.Join(tempDir, fixture.Name)
-		err := ioutil.WriteFile(filepath, fixture.Content, 0644)
-		if err != nil {
-			return nil, err
-		}
-		files[index] = filepath
-	}
-	return files, nil
-}
 
 func TestGet(t *testing.T) {
 	type testIO struct {
@@ -35,22 +23,30 @@ func TestGet(t *testing.T) {
 		ctx           context.Context
 		store         *testingstore.Store
 		io            *testIO
-		fixtures      []testingstore.Fixture
+		fixtures      []*archive.File
 		request       string
 		expectedBytes []byte
 		expectedErr   error
 	}
-	fixtures := []testingstore.Fixture{
-		testingstore.NewFixture("foo-content", false, memorybox.Sha256),
-		testingstore.NewFixture("bar-content", false, memorybox.Sha256),
+	contents := [][]byte{
+		[]byte("foo-content"),
+		[]byte("bar-content"),
+	}
+	var fixtures []*archive.File
+	for _, content := range contents {
+		fixture, err := archive.NewSha256("fixture", filebuffer.New(content))
+		if err != nil {
+			t.Fatalf("test setup: %s", err)
+		}
+		fixtures = append(fixtures, fixture)
 	}
 	table := map[string]testCase{
 		"get existing file": {
 			ctx:           context.Background(),
 			store:         testingstore.New(fixtures),
 			fixtures:      fixtures,
-			request:       fixtures[0].Name,
-			expectedBytes: fixtures[0].Content,
+			request:       fixtures[0].Name(),
+			expectedBytes: contents[0],
 			expectedErr:   nil,
 		},
 		"get missing file": {
@@ -69,7 +65,7 @@ func TestGet(t *testing.T) {
 				return store
 			}(),
 			fixtures:      fixtures,
-			request:       fixtures[0].Name,
+			request:       fixtures[0].Name(),
 			expectedBytes: nil,
 			expectedErr:   errors.New("bad search"),
 		},
@@ -81,7 +77,7 @@ func TestGet(t *testing.T) {
 				return store
 			}(),
 			fixtures:      fixtures,
-			request:       fixtures[0].Name,
+			request:       fixtures[0].Name(),
 			expectedBytes: nil,
 			expectedErr:   errors.New("bad get"),
 		},
@@ -97,7 +93,7 @@ func TestGet(t *testing.T) {
 				}
 			}(),
 			fixtures:      fixtures,
-			request:       fixtures[0].Name,
+			request:       fixtures[0].Name(),
 			expectedBytes: nil,
 			expectedErr:   errors.New("closed pipe"),
 		},

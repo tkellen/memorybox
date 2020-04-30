@@ -70,7 +70,6 @@ type Runner struct {
 	ConfigFile *configfile.ConfigFile
 	Flags      Flags
 	Store      memorybox.Store
-	HashFn     func(source io.Reader) (string, int64, error)
 	PathConfig string
 	PathTemp   string
 }
@@ -82,7 +81,6 @@ func New(logger *log.Logger) *Runner {
 		ctx:        ctx,
 		cancel:     cancel,
 		Logger:     logger,
-		HashFn:     memorybox.Sha256,
 		PathConfig: "~/.memorybox/config",
 		PathTemp:   path.Join(os.TempDir(), "memorybox"),
 	}
@@ -141,10 +139,10 @@ func (run *Runner) Configure(args []string, configData io.Reader) error {
 func (run *Runner) Dispatch() error {
 	f := run.Flags
 	if f.Put {
-		return memorybox.PutMany(run.ctx, run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
+		return memorybox.Put(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
 	}
 	if f.Import {
-		return memorybox.Import(run.ctx, run.Store, run.HashFn, run.Flags.Input, run.Flags.Concurrency, run.Logger)
+		return memorybox.Import(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger)
 	}
 	if f.Index {
 		return memorybox.Index(run.ctx, run.Store, run.Flags.Concurrency, run.Logger, os.Stdout)

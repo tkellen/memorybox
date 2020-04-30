@@ -2,15 +2,16 @@ package memorybox
 
 import (
 	"context"
-	"github.com/tkellen/memorybox/internal/archive"
+	"github.com/tkellen/memorybox/internal/fetch"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
-	"io"
 	"log"
+	"os"
 	"sync"
 )
 
-// PutMany persists any number of requested inputs to a store with concurrency
+// Put persists any number of requested inputs to a store with concurrency
 // control in place.
 //
 // A note about the complexity of this function:
@@ -31,10 +32,9 @@ import (
 // last. Two instances of memorybox being run at the same time, both
 // copying the contents of one store to another could still suffer from this
 // problem. Seems unlikely...
-func PutMany(
+func Put(
 	ctx context.Context,
 	store Store,
-	hashFn func(source io.Reader) (string, int64, error),
 	requests []string,
 	concurrency int,
 	logger *log.Logger,
@@ -60,7 +60,15 @@ func PutMany(
 			item := item // https://golang.org/doc/faq#closures_and_goroutines
 			preprocess.Go(func() error {
 				defer sem.Release(1)
-				file, err := archive.New(ctx, hashFn, item)
+				data, deleteWhenDone, fetchErr := fetch.Do(ctx, item)
+				if fetchErr != nil {
+					return fetchErr
+				}
+				if deleteWhenDone {
+					defer os.Remove(data.Name())
+				}
+				defer data.Close()
+				file, err := archive.NewSha256(item, data)
 				if err != nil {
 					return err
 				}
@@ -70,12 +78,12 @@ func PutMany(
 				// Store metadata files that are explicitly being copied using
 				// memorybox to prevent data races with them being automatically
 				// created by memorybox.
-				if file.IsMetaDataFile() {
+				if file.IsMetaFile() {
 					queue <- file
 					return nil
 				}
 				// If this is a datafile, persist it now.
-				return Put(ctx, store, file, logger)
+				return putFile(ctx, store, file, logger)
 			})
 		}
 		return nil
@@ -108,7 +116,7 @@ func PutMany(
 			}
 			metaFileGroup.Go(func() error {
 				defer sem.Release(1)
-				return Put(ctx, store, file, logger)
+				return putFile(ctx, store, file, logger)
 			})
 		}
 		return nil
@@ -118,14 +126,12 @@ func PutMany(
 }
 
 // Put persists an archive.File and its metadata to the provided store.
-func Put(ctx context.Context, store Store, file *archive.File, logger *log.Logger) error {
-	// Always close files to ensure the temporary backing files are cleaned.
-	defer file.Close()
+func putFile(ctx context.Context, store Store, file *archive.File, logger *log.Logger) error {
 	// If file is a metafile, blindly write it and signal completion. There is
 	// currently no way of knowing if an incoming metafile is newer than the one
 	// it might clobber. If someone is manually moving metafiles it is safe to
 	// assume they are fine with this.
-	if file.IsMetaDataFile() {
+	if file.IsMetaFile() {
 		logger.Printf("%s -> %s (metafile detected)", file.Name(), file.Name())
 		return store.Put(ctx, file, file.Name())
 	}
@@ -141,8 +147,7 @@ func Put(ctx context.Context, store Store, file *archive.File, logger *log.Logge
 	})
 	// Create metafile silently (only if required).
 	eg.Go(func() error {
-		metaFile := archive.NewMetaFile(file)
-		defer metaFile.Close()
+		metaFile := file.MetaFile()
 		if store.Exists(ctx, metaFile.Name()) {
 			return nil
 		}

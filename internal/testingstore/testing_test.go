@@ -5,17 +5,30 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tkellen/memorybox/pkg/testingstore"
+	"github.com/mattetti/filebuffer"
+	"github.com/tkellen/memorybox/internal/testingstore"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"io"
 	"io/ioutil"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 	"testing/iotest"
 )
 
+// identityHash is a noop hashing function for testing that returns a string
+// value of the input (assumes ASCII input).
+func identityHash(source io.Reader) (string, int64, error) {
+	bytes, err := ioutil.ReadAll(source)
+	if err != nil {
+		return "", 0, err
+	}
+	return string(bytes) + "-identity", int64(len(bytes)), nil
+}
+
 func TestStore_String(t *testing.T) {
-	store := testingstore.New([]testingstore.Fixture{})
+	store := testingstore.New([]*archive.File{})
 	actual := store.String()
 	expected := fmt.Sprintf("TestingStore")
 	if expected != actual {
@@ -24,7 +37,7 @@ func TestStore_String(t *testing.T) {
 }
 
 func TestStore_Put(t *testing.T) {
-	store := testingstore.New([]testingstore.Fixture{})
+	store := testingstore.New([]*archive.File{})
 	filename := "test"
 	expected := []byte(filename)
 	putErr := store.Put(context.Background(), bytes.NewReader(expected), filename)
@@ -41,7 +54,7 @@ func TestStore_Put(t *testing.T) {
 }
 
 func TestStore_Put_BadReader(t *testing.T) {
-	store := testingstore.New([]testingstore.Fixture{})
+	store := testingstore.New([]*archive.File{})
 	putErr := store.Put(context.Background(), iotest.TimeoutReader(bytes.NewReader([]byte("test"))), "test")
 	if putErr == nil {
 		t.Fatal("expected put error")
@@ -49,12 +62,10 @@ func TestStore_Put_BadReader(t *testing.T) {
 }
 
 func TestStore_Get(t *testing.T) {
-	fixture := testingstore.Fixture{
-		Name:    "test",
-		Content: []byte("test"),
-	}
-	store := testingstore.New([]testingstore.Fixture{fixture})
-	data, getErr := store.Get(context.Background(), fixture.Name)
+	expectedContent := []byte("test")
+	fixture, _ := archive.New("fixture", filebuffer.New(expectedContent), archive.Sha256)
+	store := testingstore.New([]*archive.File{fixture})
+	data, getErr := store.Get(context.Background(), fixture.Name())
 	defer data.Close()
 	if getErr != nil {
 		t.Fatal(getErr)
@@ -63,13 +74,13 @@ func TestStore_Get(t *testing.T) {
 	if readErr != nil {
 		t.Fatalf("failed reading response: %s", readErr)
 	}
-	if !bytes.Equal(fixture.Content, actual) {
-		t.Fatalf("expected get to contain %s, got %s", fixture.Content, actual)
+	if !bytes.Equal(expectedContent, actual) {
+		t.Fatalf("expected get to contain %s, got %s", expectedContent, actual)
 	}
 }
 
 func TestStore_GetMissing(t *testing.T) {
-	store := testingstore.New([]testingstore.Fixture{})
+	store := testingstore.New([]*archive.File{})
 	_, err := store.Get(context.Background(), "anything")
 	if err == nil {
 		t.Fatal("expected error on missing")
@@ -77,12 +88,9 @@ func TestStore_GetMissing(t *testing.T) {
 }
 
 func TestStore_Exists(t *testing.T) {
-	fixture := testingstore.Fixture{
-		Name:    "test",
-		Content: []byte("test"),
-	}
-	store := testingstore.New([]testingstore.Fixture{fixture})
-	if !store.Exists(context.Background(), fixture.Name) {
+	fixture, _ := archive.New("fixture", filebuffer.New([]byte("test")), identityHash)
+	store := testingstore.New([]*archive.File{fixture})
+	if !store.Exists(context.Background(), fixture.Name()) {
 		t.Fatal("expected boolean true for file that exists")
 	}
 	if store.Exists(context.Background(), "nope") {
@@ -91,17 +99,14 @@ func TestStore_Exists(t *testing.T) {
 }
 
 func TestStore_Search(t *testing.T) {
-	fixtures := []testingstore.Fixture{
-		{Name: "foo", Content: []byte("foo")},
-		{Name: "bar", Content: []byte("baz")},
-		{Name: "bar", Content: []byte("baz")},
+	var fixtures []*archive.File
+	for _, fixture := range []string{"foo", "bar", "baz"} {
+		fixture, _ := archive.New("fixture", filebuffer.New([]byte(fixture)), identityHash)
+		fixtures = append(fixtures, fixture)
 	}
 	store := testingstore.New(fixtures)
-	reader := func(content []byte) io.ReadCloser {
-		return ioutil.NopCloser(bytes.NewReader(content))
-	}
 	for _, fixture := range fixtures {
-		if err := store.Put(context.Background(), reader(fixture.Content), fixture.Name); err != nil {
+		if err := store.Put(context.Background(), fixture, fixture.Name()); err != nil {
 			t.Fatalf("test setup: %s", err)
 		}
 	}
@@ -112,12 +117,12 @@ func TestStore_Search(t *testing.T) {
 	}{
 		"multiple matches": {
 			search:          "b",
-			expectedMatches: []string{"bar", "baz"},
+			expectedMatches: []string{"bar-identity", "baz-identity"},
 			expectedErr:     nil,
 		},
 		"one match": {
 			search:          "f",
-			expectedMatches: []string{"foo"},
+			expectedMatches: []string{"foo-identity"},
 			expectedErr:     nil,
 		},
 		"no matches": {
@@ -142,6 +147,7 @@ func TestStore_Search(t *testing.T) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
 			if err == nil {
+				sort.Strings(actualMatches)
 				for index, match := range actualMatches {
 					if match != test.expectedMatches[index] {
 						t.Fatalf("expected %s for match, got %s", test.expectedMatches[index], match)

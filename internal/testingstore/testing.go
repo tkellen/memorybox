@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/archive"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"io"
 	"io/ioutil"
 	"strings"
@@ -26,29 +26,14 @@ type Fixture struct {
 	Content []byte
 }
 
-// NewFixture generates a content-hashed fixture for testing.
-func NewFixture(content string, isMeta bool, hashFn func(source io.Reader) (string, int64, error)) Fixture {
-	contentAsBytes := []byte(content)
-	name, _, _ := hashFn(bytes.NewBuffer(contentAsBytes))
-	if isMeta {
-		name = archive.ToMetaFileName(name)
-		f, _ := archive.NewFromReader(context.Background(), hashFn, ioutil.NopCloser(bytes.NewReader(contentAsBytes)))
-		defer f.Close()
-		contentAsBytes, _ = ioutil.ReadAll(archive.NewMetaFile(f))
-	}
-	return Fixture{
-		Name:    name,
-		Content: contentAsBytes,
-	}
-}
-
 // New returns a Store pre-filled with supplied fixtures.
-func New(fixtures []Fixture) *Store {
+func New(fixtures []*archive.File) *Store {
 	store := &Store{
 		Data: sync.Map{},
 	}
 	for _, fixture := range fixtures {
-		store.Data.Store(fixture.Name, fixture.Content)
+		data, _ := ioutil.ReadAll(fixture)
+		store.Data.Store(fixture.Name(), data)
 	}
 	return store
 }
