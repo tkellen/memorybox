@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"github.com/google/go-cmp/cmp"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/store"
@@ -37,7 +37,7 @@ func TestIndex(t *testing.T) {
 			testStore := testingstore.New([]*archive.File{datafile, metafile})
 			sink := filebuffer.New([]byte{})
 			// get result of index before data corruption
-			store.Index(context.Background(), testStore, 10, silentLogger, false, sink)
+			store.Index(context.Background(), testStore, 10, false, silentLogger, log.New(sink, "", 0))
 			// simulate data corruption by changing the content of a file in
 			// store so the hash doesn't match.
 			testStore.Data.Store(datafile.Name(), []byte("TEST"))
@@ -120,7 +120,7 @@ func TestIndex(t *testing.T) {
 			if test.sink != nil {
 				sink = test.sink
 			}
-			err := store.Index(context.Background(), test.store, 10, silentLogger, test.integrityChecking, sink)
+			err := store.Index(context.Background(), test.store, 10, test.integrityChecking, silentLogger, log.New(sink, "", 0))
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

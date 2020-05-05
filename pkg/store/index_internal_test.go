@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io/ioutil"
@@ -70,7 +70,7 @@ func TestIndexInternal(t *testing.T) {
 			if test.sink != nil {
 				sink = test.sink
 			}
-			err := Index(context.Background(), test.store, 10, silentLogger, test.integrityChecking, sink)
+			err := Index(context.Background(), test.store, 10, test.integrityChecking, silentLogger, silentLogger)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

@@ -46,14 +46,14 @@ func TestNew(t *testing.T) {
 		"localDisk": {
 			config: map[string]string{
 				"type": "localDisk",
-				"home": "/",
+				"path": "/",
 			},
 			expected: "LocalDiskStore: /",
 		},
 		"s3": {
 			config: map[string]string{
-				"type": "s3",
-				"home": "bucket",
+				"type":   "s3",
+				"bucket": "bucket",
 			},
 			expected: "ObjectStore: bucket",
 		},

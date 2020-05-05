@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"github.com/hashicorp/go-retryablehttp"
+	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 	"io"
 	"io/ioutil"
 	"log"
@@ -13,11 +15,55 @@ import (
 	"os"
 )
 
-// Do takes a request string for any supported source (local file, url or stdin)
-// and returns an os.File + a boolean indicating whether the request was a file
-// on disk (if it was not, the consumer should delete the file on close).
-func Do(ctx context.Context, req string) (file *os.File, deleteOnClose bool, err error) {
+// One takes a request string for any supported source (local file, url or
+// stdin) and returns an os.File + a boolean indicating whether the request was
+// a file  on disk (if it was not, the consumer should delete the file on close).
+func One(ctx context.Context, req string) (file *os.File, deleteOnClose bool, err error) {
 	return new(ctx).fetch(req)
+}
+
+// Many does the same thing as One but lots at a time.
+func Many(
+	ctx context.Context,
+	requests []string,
+	concurrency int,
+	process func(context.Context, int, string, io.ReadSeeker) error,
+) error {
+	sem := semaphore.NewWeighted(int64(concurrency))
+	eg, egCtx := errgroup.WithContext(ctx)
+	eg.Go(func() error {
+		for index, item := range requests {
+			index, item := index, item // https://golang.org/doc/faq#closures_and_goroutines
+			if err := sem.Acquire(egCtx, 1); err != nil {
+				return err
+			}
+			eg.Go(func() error {
+				defer sem.Release(1)
+				// If the source input is arriving from a location that does not
+				// originate on the machine where memorybox is running (e.g. a
+				// user instructing memorybox to fetch a URL) the fetch function
+				// will store the data in a temporary file. This ensures the
+				// content can be be read multiple times if needed. For example
+				// the put function reads a file once for hashing, once to check
+				// to see if it contains metadata and again to actually send it
+				// to the store).
+				file, deleteOnClose, fetchErr := new(ctx).fetch(item)
+				if fetchErr != nil {
+					return fetchErr
+				}
+				// In cases where a temporary file has been created by fetching,
+				// `deleteWhenDone` will be true it is OK/required to delete
+				// the file when work with it is complete.
+				if deleteOnClose {
+					defer file.Close()
+					defer os.Remove(file.Name())
+				}
+				return process(ctx, index, item, file)
+			})
+		}
+		return nil
+	})
+	return eg.Wait()
 }
 
 // sys defines a set of methods for network and disk io. This is an attempt to
@@ -87,6 +133,7 @@ func (sys *sys) bufferToTempFile(reader io.Reader) (*os.File, bool, error) {
 	}
 	_, copyErr := io.Copy(file, reader)
 	if copyErr != nil {
+		os.Remove(file.Name())
 		return nil, false, copyErr
 	}
 	file.Seek(0, io.SeekStart)

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/google/go-cmp/cmp"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io"

@@ -49,7 +49,7 @@ func (s3 *s3mock) ListObjects(bucket string, prefix string, recursive bool, done
 func TestNewFromConfig(t *testing.T) {
 	expected := "bucket-name"
 	actual := objectstore.NewFromConfig(map[string]string{
-		"home": expected,
+		"bucket": expected,
 	})
 	if expected != actual.Bucket {
 		t.Fatalf("expected bucket of %s, got %s", expected, actual.Bucket)

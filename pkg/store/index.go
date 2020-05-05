@@ -1,7 +1,6 @@
 package store
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -9,7 +8,6 @@ import (
 	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
-	"io"
 	"io/ioutil"
 	"log"
 	"strings"
@@ -20,8 +18,8 @@ type jsonIndex struct {
 	Memorybox []json.RawMessage `json:"memorybox"`
 }
 
-// Index creates a json-encoded array of all metafile contents and writes it to
-// a provided sink.
+// Index dumps the output of all meta files to a provided sink, each meta file
+// is delimited by a newline. This allows streaming modifications.
 // ```
 // {
 //   "memorybox": [
@@ -38,17 +36,20 @@ type jsonIndex struct {
 //   ]
 // }
 // ```
-func Index(ctx context.Context, store Store, concurrency int, logger *log.Logger, integrityChecking bool, sink io.Writer) error {
-	data, indexErr := index(ctx, store, concurrency, logger, integrityChecking)
+func Index(
+	ctx context.Context,
+	store Store,
+	concurrency int,
+	integrityChecking bool,
+	stderr *log.Logger,
+	stdout *log.Logger,
+) error {
+	data, indexErr := index(ctx, store, concurrency, integrityChecking, stderr)
 	if indexErr != nil {
 		return indexErr
 	}
-	// This is performed here rather than within the index function because
-	// Import uses the results from index directly.
-	result, _ := json.Marshal(jsonIndex{Memorybox: data})
-	_, copyErr := io.Copy(sink, bytes.NewBuffer(result))
-	if copyErr != nil {
-		return copyErr
+	for _, line := range data {
+		stdout.Writer().Write(append(line, "\r\n"...))
 	}
 	return nil
 }
@@ -56,7 +57,7 @@ func Index(ctx context.Context, store Store, concurrency int, logger *log.Logger
 // index performs an integrity check on the store and returns a map keyed by
 // datafile names where the value is a byte array containing the content of
 // their metafile pair.
-func index(ctx context.Context, store Store, concurrency int, logger *log.Logger, integrityChecking bool) ([]json.RawMessage, error) {
+func index(ctx context.Context, store Store, concurrency int, integrityChecking bool, stderr *log.Logger) ([]json.RawMessage, error) {
 	// Prepare index to receive data.
 	var data []json.RawMessage
 	// Confirm there is one metafile for every datafile and bail out early if
@@ -65,7 +66,7 @@ func index(ctx context.Context, store Store, concurrency int, logger *log.Logger
 	if err != nil {
 		return nil, fmt.Errorf("%w: %s", errCorrupted, err)
 	}
-	logger.Printf("indexing datafiles/metafiles (%d/%d) ", len(datafiles), len(metafiles))
+	stderr.Printf("indexing datafiles/metafiles (%d/%d) ", len(datafiles), len(metafiles))
 	// Create channel to receive index entries
 	entries := make(chan json.RawMessage)
 	// Start concurrency gated iteration of all files in store.
@@ -140,7 +141,7 @@ func indexItem(ctx context.Context, store Store, name string, integrityChecking 
 	reader.Close()
 	dataFileName := archive.DataFileNameFromMeta(content)
 	if dataFileName != name {
-		return nil, fmt.Errorf("%w: %s conflictingly points to %s", errCorrupted, name, dataFileName)
+		return nil, fmt.Errorf("%w: %s key in %s conflicts with filename", errCorrupted, archive.MetaKeyFileName, metaFileName)
 	}
 	return content, nil
 }
@@ -150,7 +151,7 @@ func indexItem(ctx context.Context, store Store, name string, integrityChecking 
 // any metafile doesn't have a corresponding datafile or vise versa, this will
 // fail.
 func collateStore(ctx context.Context, store Store) (datafiles map[string]struct{}, metafiles map[string]struct{}, err error) {
-	files, _ := store.Search(ctx, "*")
+	files, _ := store.Search(ctx, "")
 	datafiles = map[string]struct{}{}
 	metafiles = map[string]struct{}{}
 	for _, file := range files {

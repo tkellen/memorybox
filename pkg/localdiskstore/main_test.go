@@ -23,7 +23,7 @@ import (
 func TestNewFromConfig(t *testing.T) {
 	expected := "test"
 	actual := localdiskstore.NewFromConfig(map[string]string{
-		"home": expected,
+		"path": expected,
 	})
 	if expected != actual.RootPath {
 		t.Fatalf("expected rootPath of %s, got %s", expected, actual.RootPath)
@@ -72,7 +72,7 @@ func TestStore_Put_CannotCreateHome(t *testing.T) {
 	expected := []byte(filename)
 	putErr := store.Put(context.Background(), bytes.NewReader(expected), filename)
 	if putErr == nil {
-		t.Fatal("expected error creating home directory")
+		t.Fatal("expected error creating path directory")
 	}
 }
 

@@ -3,7 +3,7 @@ package testingstore
 import (
 	"context"
 	"fmt"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io"
 	"io/ioutil"

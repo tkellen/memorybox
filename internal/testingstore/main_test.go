@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io/ioutil"

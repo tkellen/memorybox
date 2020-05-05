@@ -4,12 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/store"
 	"io/ioutil"
 	"log"
+	"os"
 	"testing"
 )
 
@@ -45,7 +46,8 @@ func TestImport(t *testing.T) {
 				tempFile.WriteString(fmt.Sprintf("%s\t{}\n", source))
 			}
 			tempFile.Close()
-			err := store.Import(ctx, testStore, []string{tempFile.Name()}, 10, silentLogger)
+			defer os.Remove(tempFile.Name())
+			err := store.Import(ctx, testStore, []string{tempFile.Name()}, 10, silentLogger, silentLogger)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

@@ -9,6 +9,7 @@ import (
 	"github.com/tkellen/memorybox/pkg/localdiskstore"
 	"github.com/tkellen/memorybox/pkg/objectstore"
 	"io"
+	"io/ioutil"
 	"os"
 )
 
@@ -36,6 +37,18 @@ func New(config map[string]string) (Store, error) {
 		return testingstore.New([]*archive.File{}), nil
 	}
 	return nil, fmt.Errorf("unknown store type %s", storeType)
+}
+
+func getBytes(ctx context.Context, store Store, hash string) ([]byte, error) {
+	reader, err := store.Get(ctx, hash)
+	if err != nil {
+		return nil, err
+	}
+	result, readErr := ioutil.ReadAll(reader)
+	if readErr != nil {
+		return nil, readErr
+	}
+	return result, nil
 }
 
 func findOne(ctx context.Context, store Store, hash string) (string, error) {

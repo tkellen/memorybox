@@ -8,8 +8,8 @@ import (
 	"github.com/tkellen/memorybox/internal/fetch"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"golang.org/x/sync/errgroup"
+	"io"
 	"log"
-	"os"
 	"strings"
 	"sync"
 )
@@ -29,13 +29,20 @@ type importEntry struct {
 // Import will intelligently de-dupe manifests and remove entries that already
 // appear in the store as being sourced from the filepath or URL in the manifest
 // file.
-func Import(ctx context.Context, store Store, inputs []string, concurrency int, logger *log.Logger) error {
-	imports, err := collectImports(ctx, inputs)
+func Import(
+	ctx context.Context,
+	store Store,
+	inputs []string,
+	concurrency int,
+	stderr *log.Logger,
+	stdout *log.Logger,
+) error {
+	imports, err := collectImports(ctx, inputs, concurrency)
 	if err != nil {
 		return err
 	}
 	// Get all metadata entries from the store.
-	index, indexErr := index(ctx, store, concurrency, logger, false)
+	index, indexErr := index(ctx, store, concurrency, false, stderr)
 	if indexErr != nil {
 		return indexErr
 	}
@@ -70,37 +77,36 @@ func Import(ctx context.Context, store Store, inputs []string, concurrency int, 
 		putRequests = append(putRequests, entry.Request)
 		putMetadatas = append(putMetadatas, entry.Metadata)
 	}
-	logger.Printf("queued: %d, duplicates removed: %d, existing removed: %d", len(putRequests), dupeImportCount, inStoreAlreadyCount)
-	return Put(ctx, store, putRequests, concurrency, logger, putMetadatas)
+	stdout.Printf("queued: %d, duplicates removed: %d, existing removed: %d", len(putRequests), dupeImportCount, inStoreAlreadyCount)
+	return Put(ctx, store, putRequests, putMetadatas, concurrency, stderr, stdout)
 }
 
 // collectImports reads all input files supplied to the import function
 // concurrently, aggregating them into an array of ImportEntries.
-func collectImports(ctx context.Context, inputs []string) ([]importEntry, error) {
+func collectImports(ctx context.Context, requests []string, concurrency int) ([]importEntry, error) {
 	// Start a collector goroutine to receive all entries.
 	entries := make(chan importEntry)
-	// Process every import file concurrently.
-	process, _ := errgroup.WithContext(ctx)
-	for _, item := range inputs {
-		process.Go(func() error {
-			file, deleteOnClose, fetchErr := fetch.Do(ctx, item)
-			if fetchErr != nil {
-				return fetchErr
+	// Prepare handler to read every import file concurrently.
+	reader := func(ctx context.Context, index int, item string, src io.ReadSeeker) error {
+		scanner := bufio.NewScanner(src)
+		for scanner.Scan() {
+			fields := strings.SplitN(scanner.Text(), "\t", 2)
+			// Allow import lines with no metadata.
+			if len(fields) < 2 {
+				fields = append(fields, "")
 			}
-			if deleteOnClose {
-				defer os.Remove(file.Name())
+			entries <- importEntry{
+				Request:  fields[0],
+				Metadata: fields[1],
 			}
-			scanner := bufio.NewScanner(file)
-			for scanner.Scan() {
-				fields := strings.SplitN(scanner.Text(), "\t", 2)
-				entries <- importEntry{
-					Request:  fields[0],
-					Metadata: fields[1],
-				}
-			}
-			return nil
-		})
+		}
+		return nil
 	}
+	// Process all import files using the reader function above.
+	process, processCtx := errgroup.WithContext(ctx)
+	process.Go(func() error {
+		return fetch.Many(processCtx, requests, concurrency, reader)
+	})
 	// Start listening on the entries channel to aggregate results.
 	var imports []importEntry
 	collector := sync.WaitGroup{}

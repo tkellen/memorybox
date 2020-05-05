@@ -2,7 +2,7 @@ package store_test
 
 import (
 	"context"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/store"
@@ -64,7 +64,7 @@ func TestPutSuccess(t *testing.T) {
 			ctx := context.Background()
 			// Run put twice, it should be idempotent.
 			for i := 0; i < 2; i++ {
-				err := store.Put(ctx, testStore, inputs, test.concurrency, silentLogger, []string{})
+				err := store.Put(ctx, testStore, inputs, []string{}, test.concurrency, silentLogger, silentLogger)
 				if err != nil && test.expectedErr == nil {
 					t.Fatal(err)
 				}
@@ -107,9 +107,10 @@ func TestPutFail(t *testing.T) {
 		context.Background(),
 		testingstore.New([]*archive.File{}),
 		[]string{"nope"},
+		[]string{},
 		2,
 		log.New(ioutil.Discard, "", 0),
-		[]string{},
+		log.New(ioutil.Discard, "", 0),
 	)
 	if err == nil {
 		t.Fatal("expected error")

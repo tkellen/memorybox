@@ -43,7 +43,7 @@ func New(bucket string, client s3) *Store {
 func NewFromConfig(config map[string]string) *Store {
 	creds := credentials.NewEnvAWS()
 	client, _ := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
-	return New(config["home"], client)
+	return New(config["bucket"], client)
 }
 
 // Put writes the content of an io.Reader to object storage.

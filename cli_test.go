@@ -1,152 +1,107 @@
 package main
 
 import (
-	"errors"
+	"bytes"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/simplecli"
+	"github.com/tkellen/memorybox/pkg/archive"
 	"io/ioutil"
-	"log"
 	"os"
 	"strings"
 	"testing"
 )
 
-const goodConfig = `
-targets:
+type testFiles struct {
+	storePath      string
+	configPath     string
+	configFileHash string
+	importFilePath string
+}
+
+func testSetup(t *testing.T) testFiles {
+	storePath, storePathErr := ioutil.TempDir("", "*")
+	if storePathErr != nil {
+		t.Fatalf("test setup: %s", storePathErr)
+	}
+	config := []byte(fmt.Sprintf(`targets:
   test:
-    type: testing
-    key: value
-  badTarget:
-    type: unknown
-    key: value
-`
-const badConfig = "[notyaml]"
+    type: localDisk
+    path: %s
+  invalid:
+    type: whatever`, storePath))
+	hash, _, _ := archive.Sha256(bytes.NewBuffer(config))
+	configFile, configFileErr := ioutil.TempFile("", "*")
+	if configFileErr != nil {
+		t.Fatalf("test setup: %s", configFileErr)
+	}
+	_, configFileWriteErr := configFile.Write(config)
+	if configFileWriteErr != nil {
+		t.Fatalf("test setup: %s", configFileWriteErr)
+	}
+	configFile.Close()
+	importFile, importFileErr := ioutil.TempFile("", "*")
+	if importFileErr != nil {
+		t.Fatalf("test setup: %s", configFileErr)
+	}
+	_, importFileWriteErr := importFile.WriteString(fmt.Sprintf("%s\t{\"test\":\"meta\"}", configFile.Name()))
+	if importFileWriteErr != nil {
+		t.Fatalf("test setup: %s", importFileWriteErr)
+	}
+	configFile.Close()
+	return testFiles{
+		storePath:      storePath,
+		configPath:     configFile.Name(),
+		configFileHash: hash,
+		importFilePath: importFile.Name(),
+	}
+}
 
 func TestRunner(t *testing.T) {
-	silentLogger := log.New(ioutil.Discard, "", 0)
-	// make a good / bad configuration file to use for each command
-	configs := map[string]string{
-		"good": goodConfig,
-		"bad":  badConfig,
+	table := map[string]int{
+		"":                           1,
+		"-c {{configPath}} help":     1,
+		"-c {{configPath}} -badflag": 1,
+		"-c {{configPath}} -t missingTarget index":                                                               1,
+		"-c {{configPath}} -t invalid index":                                                                     1,
+		"-c {{configPath}} -t test unknown":                                                                      1,
+		"-c {{configPath}} -t test put":                                                                          1,
+		"-c {{configPath}} -t test get":                                                                          1,
+		"-c {{configPath}} -t test meta":                                                                         1,
+		"-c {{configPath}} -t test put missing":                                                                  1,
+		"-c {{configPath}} -t test get missing":                                                                  1,
+		"-c {{configPath}} -t test meta missing":                                                                 1,
+		"-c /root/cant/write/here/path version":                                                                  1,
+		"-c {{configPath}} -d version":                                                                           0,
+		"-c {{configPath}} -t test version":                                                                      0,
+		"-c {{configPath}} -t test put {{tempFile}}":                                                             0,
+		"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test get {{hash}}":                   0,
+		"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test meta {{hash}}":                  0,
+		"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test meta {{hash}} set key value":    0,
+		"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test meta {{hash}} delete key value": 0,
+		"-c {{configPath}} -t test index":                                                                        0,
+		"-c {{configPath}} -t test index rehash":                                                                 0,
+		"-c {{configPath}} -t test import {{importFile}}":                                                        0,
 	}
-	for name, content := range configs {
-		file, err := ioutil.TempFile("", "*")
-		if err != nil {
-			t.Fatalf("test setup: %s", err)
-		}
-		file.WriteString(content)
-		file.Close()
-		configs[name] = file.Name()
-	}
-	defer os.Remove(configs["good"])
-	defer os.Remove(configs["bad"])
-
-	table := map[string]struct {
-		command          string
-		configPath       string
-		flagVariations   []string
-		configVariations map[string]string
-		expectedErr      error
-	}{
-		"non-existent command": {
-			command: "hum",
-			configVariations: map[string]string{
-				"good": configs["good"],
-			},
-			flagVariations: []string{""},
-			expectedErr:    errors.New("Usage"),
-		},
-		"show config": {
-			command:          "config",
-			configVariations: configs,
-			flagVariations:   []string{""},
-			expectedErr:      nil,
-		},
-		"config set key on target": {
-			command:          "config set test key someValue",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d "},
-			expectedErr:      nil,
-		},
-		"config delete key on target": {
-			command:          "config delete test key",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d"},
-			expectedErr:      nil,
-		},
-		"config delete entire target": {
-			command:          "config delete test",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d"},
-			expectedErr:      nil,
-		},
-		"put file in store": {
-			command:          "put test " + configs["good"],
-			configVariations: configs,
-			flagVariations:   []string{"", "-d", "-c 2"},
-			expectedErr:      nil,
-		},
-		"put file in target with bad store type configured": {
-			command:          "put badTarget " + configs["good"],
-			configVariations: configs,
-			flagVariations:   []string{"", "-d", "-c 2"},
-			expectedErr:      errors.New("unknown store type"),
-		},
-		"get file from store": {
-			command:          "get test test",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d"},
-			expectedErr:      errors.New("0 objects"),
-		},
-		"get metadata on missing metadata": {
-			command:          "meta test 3a",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d"},
-			expectedErr:      errors.New("0 objects"),
-		},
-		"set metadata on missing metadata": {
-			command:          "meta test 3a set newKey someValue",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d"},
-			expectedErr:      errors.New("0 objects"),
-		},
-		"delete metadata on missing metadata": {
-			command:          "meta test 3a delete newKey",
-			configVariations: configs,
-			flagVariations:   []string{"", "-d"},
-			expectedErr:      errors.New("0 objects"),
-		},
-	}
-	for name, test := range table {
-		test := test
-		// run command with all configuration files specified
-		for configType, configPath := range test.configVariations {
-			testName := fmt.Sprintf("with %s config %s", name, configType)
-			expectedErr := test.expectedErr
-			// on runs with a config that is "bad", expect failure on unmarshalling
-			if configType == "bad" {
-				expectedErr = errors.New("unmarshal")
+	for command, expectedCode := range table {
+		expectedCode := expectedCode
+		t.Run(command, func(t *testing.T) {
+			files := testSetup(t)
+			defer os.RemoveAll(files.storePath)
+			defer os.Remove(files.configPath)
+			defer os.Remove(files.importFilePath)
+			commands := strings.Split(command, " && ")
+			for _, cmd := range commands {
+				cmd = strings.Replace(cmd, "{{tempFile}}", files.configPath, -1)
+				cmd = strings.Replace(cmd, "{{hash}}", files.configFileHash[0:6], -1)
+				cmd = strings.Replace(cmd, "{{importFile}}", files.importFilePath, -1)
+				cmd = strings.Replace(cmd, "{{configPath}}", files.configPath, -1)
+				cmd = "memorybox " + cmd
+				stdout := bytes.NewBuffer([]byte{})
+				stderr := bytes.NewBuffer([]byte{})
+				actualCode, err := Run(strings.Fields(cmd), stderr, stdout)
+				if actualCode != expectedCode {
+					t.Fatalf("%s errored %s with code %d, expected code %d\nSTDERR:\n%s\nSTDOUT:\n%s\n", cmd, err, actualCode, expectedCode, stderr, stdout)
+				}
 			}
-			// for every test, run variations with flags added and removed
-			for _, variation := range test.flagVariations {
-				args := strings.Fields(fmt.Sprintf("memorybox %s "+test.command, variation))
-				t.Run(testName+" "+strings.Join(args, " "), func(t *testing.T) {
-					tempDir, err := ioutil.TempDir("", "*")
-					if err != nil {
-						t.Fatal(err)
-					}
-					defer os.RemoveAll(tempDir)
-					runner := New(silentLogger)
-					(*runner).PathConfig = configPath
-					runErr := simplecli.Run(runner, args)
-					if runErr != nil && expectedErr == nil {
-						t.Fatalf("did not expect: %s", runErr)
-					}
-					if runErr != nil && expectedErr != nil && !strings.Contains(runErr.Error(), expectedErr.Error()) {
-						t.Fatalf("expected error %s, got %s", expectedErr, runErr)
-					}
-				})
-			}
-		}
+		})
 	}
 }

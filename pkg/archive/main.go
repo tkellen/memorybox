@@ -3,13 +3,14 @@ package archive
 import (
 	"encoding/hex"
 	"encoding/json"
+	"github.com/mattetti/filebuffer"
 	hash "github.com/minio/sha256-simd"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
-	"github.com/tkellen/filebuffer"
 	"io"
 	"io/ioutil"
 	"strings"
+	"time"
 )
 
 // File satisfies the io.ReadCloser interface and provides memorybox-specific
@@ -57,6 +58,9 @@ const MetaKeyFileSource = "memorybox.source"
 
 // MetaKeyFileSize refers to the filesize of the datafile a metafile describes.
 const MetaKeyFileSize = "memorybox.size"
+
+// MetaKeyImportedAt refers to the time when the metafile was imported.
+const MetaKeyImportedAt = "memorybox.importedAt"
 
 // MetaFilePrefix controls naming for metadata files (which are named the
 // same as the file they describe plus this prefix).
@@ -191,6 +195,7 @@ func (f *File) MetaFile() *File {
 	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyFileName, f.name)
 	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyFileSource, f.source)
 	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyFileSize, f.size)
+	metaFile.meta, _ = sjson.SetBytes(metaFile.meta, MetaKeyImportedAt, time.Now().UTC().Format(time.RFC3339))
 	return metaFile
 }
 
@@ -266,4 +271,9 @@ func (f *File) MetaGet(key string) interface{} {
 		return result
 	}
 	return value.String()
+}
+
+// Meta returns the byte array that represents metadata for this file.
+func (f *File) Meta() []byte {
+	return f.meta
 }

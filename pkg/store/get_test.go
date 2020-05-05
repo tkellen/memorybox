@@ -4,10 +4,11 @@ import (
 	"context"
 	"errors"
 	"github.com/google/go-cmp/cmp"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/store"
+	"log"
 	"os"
 	"testing"
 )
@@ -85,7 +86,7 @@ func TestGet(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			sink := filebuffer.New([]byte{})
-			err := store.Get(context.Background(), test.store, test.request, sink)
+			err := store.Get(context.Background(), test.store, test.request, log.New(sink, "", 0))
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}

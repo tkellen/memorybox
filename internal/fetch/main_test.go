@@ -7,7 +7,6 @@ import (
 	"github.com/tkellen/memorybox/internal/fetch"
 	"io/ioutil"
 	"os"
-	"strings"
 	"testing"
 )
 
@@ -44,18 +43,17 @@ func TestFetch(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			file, deleteWhenDone, err := fetch.Do(context.Background(), test.input)
+			file, deleteWhenDone, err := fetch.One(context.Background(), test.input)
+			if deleteWhenDone {
+				defer os.Remove(file.Name())
+			}
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
-			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) && !strings.Contains(err.Error(), test.expectedErr.Error()) {
+			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
 			if err == nil {
-				if deleteWhenDone {
-					defer os.Remove(file.Name())
-				}
-				defer file.Close()
 				actualBytes, readErr := ioutil.ReadAll(file)
 				if readErr != nil {
 					t.Fatal(err)

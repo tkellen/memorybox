@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/tkellen/filebuffer"
+	"github.com/mattetti/filebuffer"
 	"io/ioutil"
 	"net/http"
 	"os"
@@ -102,6 +102,9 @@ func Test_fetch(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			file, deleteWhenDone, err := test.sys.fetch(test.input)
+			if deleteWhenDone {
+				defer os.Remove(file.Name())
+			}
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -109,9 +112,6 @@ func Test_fetch(t *testing.T) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
 			if err == nil {
-				if deleteWhenDone {
-					defer os.Remove(file.Name())
-				}
 				defer file.Close()
 				actualBytes, readErr := ioutil.ReadAll(file)
 				if readErr != nil {

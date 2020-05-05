@@ -3,180 +3,216 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/docopt/docopt-go"
-	"github.com/tkellen/memorybox/internal/configfile"
+	"github.com/jessevdk/go-flags"
+	"github.com/mitchellh/go-homedir"
+	"github.com/tkellen/cli"
 	"github.com/tkellen/memorybox/pkg/store"
 	"io"
+	"io/ioutil"
 	"log"
 	"os"
+	"os/signal"
+	"path"
+	"syscall"
 	"time"
 )
 
-const version = "dev"
+// Run executes memorybox functionality from command line arguments.
+func Run(args []string, stdout io.Writer, stderr io.Writer) (int, error) {
+	// Create context to pass into all commands to enable cancellation.
+	background, cancel := context.WithCancel(context.Background())
+	// Start building context for commands.
+	ctx := ctx{
+		name: path.Base(args[0]),
+		ui: &ui{
+			output:  log.New(stdout, "", 0),
+			error:   log.New(stderr, "", 0),
+			verbose: log.New(ioutil.Discard, "", 0),
+		},
+		background: background,
+	}
+	// Start goroutine to capture user requesting early shutdown (CTRL+C).
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		ctx.ui.error.Print("shutdown signal received, cleaning up")
+		// Tell all goroutines that their context has been cancelled.
+		cancel()
+		// Give some time to clean up gracefully.
+		time.Sleep(time.Second * 5)
+	}()
+	// Extract global options and return remaining command line arguments.
+	remain, err := flags.NewParser(&ctx.flag, flags.PassDoubleDash).ParseArgs(args[1:])
+	if err != nil {
+		return 1, err
+	}
+	// Enable verbose debugging to error stream if user has requested it.
+	if ctx.flag.Debugging {
+		ctx.ui.verbose.SetOutput(ctx.ui.error.Writer())
+	}
+	ctx.ui.verbose.Printf("%s", ctx.flag)
+	// Find full path to configuration file.
+	fullPath, expandErr := homedir.Expand(ctx.flag.ConfigPath)
+	if expandErr != nil {
+		return 1, expandErr
+	}
+	// Ensure configuration directory exists.
+	if err := os.MkdirAll(path.Dir(fullPath), 0755); err != nil {
+		return 1, err
+	}
+	// Open / ensure configuration file exists.
+	file, fileErr := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
+	if fileErr != nil {
+		return 1, fileErr
+	}
+	// Load configuration file.
+	config, configErr := cli.NewConfigFile(file, cli.ConfigTarget{
+		"type": "localDisk",
+		"path": "~/memorybox",
+	})
+	if configErr != nil {
+		return 1, configErr
+	}
+	ctx.config = config
+	// Running this program may modify the configuration file. Ensure it is
+	// saved at exit.
+	defer func() {
+		// Force truncating this is probably a bad plan. Fix this!
+		file.Seek(0, io.SeekStart)
+		file.Truncate(0)
+		config.Save(file)
+		file.Close()
+	}()
+	// Instantiate store, but only if we need it.
+	if len(remain) > 0 && remain[0] != "config" {
+		// Fetch target store config.
+		target, targetErr := config.Target(ctx.flag.Target)
+		if targetErr != nil {
+			return 1, targetErr
+		}
+		ctx.target = target
+		store, storeErr := store.New(*ctx.target)
+		if storeErr != nil {
+			return 1, fmt.Errorf("failed to load %v: %s", ctx.flag.Target, storeErr)
+		}
+		ctx.store = store
+	}
+	if err := ctx.commands().Dispatch(remain); err != nil {
+		return 1, err
+	}
+	return 0, nil
+}
+
+// ui defines output streams for command invocations.
+type ui struct {
+	output  *log.Logger
+	error   *log.Logger
+	verbose *log.Logger
+}
+
+// flag describes options that are globally available for all commands.
+type flag struct {
+	Debugging  bool   `short:"d" long:"debug"`
+	ConfigPath string `short:"c" long:"config" default:"~/.memorybox/config"`
+	Max        int    `short:"m" long:"max" default:"10"`
+	Target     string `short:"t" long:"target" default:"default"`
+}
+
+// String pretty prints the content of all program options for debugging.
+func (f flag) String() string {
+	return fmt.Sprintf("flags (debugging: %v, config: %s, max: %d, target: %s)", f.Debugging, f.ConfigPath, f.Max, f.Target)
+}
+
+// ctx contains all the state required to call memorybox functionality.
+type ctx struct {
+	name       string
+	background context.Context
+	ui         *ui
+	config     *cli.ConfigFile
+	target     *cli.ConfigTarget
+	store      store.Store
+	flag       flag
+}
+
+// commands outputs a cli.Tree that can be used to execute commands.
+func (ctx *ctx) commands() *cli.Tree {
+	return &cli.Tree{
+		Fn: ctx.help,
+		SubCommands: cli.Map{
+			"version": ctx.version,
+			"help":    ctx.help,
+			"get":     cli.Fn{Fn: ctx.get, MinArgs: 1, Help: ctx.help},
+			"put":     cli.Fn{Fn: ctx.put, MinArgs: 1, Help: ctx.help},
+			"import":  cli.Fn{Fn: ctx.importFn, MinArgs: 1, Help: ctx.help},
+			"index": cli.Tree{
+				Fn: ctx.index,
+				SubCommands: cli.Map{
+					"rehash": ctx.indexRehash,
+				},
+			},
+			"meta": cli.Tree{
+				Fn: cli.Fn{Fn: ctx.metaGet, MinArgs: 1, Help: ctx.help},
+				SubCommands: cli.Map{
+					"set":    cli.Fn{Fn: ctx.metaSet, MinArgs: 3, Help: ctx.help},
+					"delete": cli.Fn{Fn: ctx.metaDelete, MinArgs: 2, Help: ctx.help},
+				},
+			},
+		},
+	}
+}
+
 const usageTemplate = `Usage:
-  %[1]s [-d] get <target> <hash>
-  %[1]s [--concurrency=<num> -d] put <target> <input>...
-  %[1]s [--concurrency=<num> -d] import <target> <input>...
-  %[1]s [-d] index <target>
-  %[1]s [-d] meta <target> <hash> [set <key> <value> | delete [<key>]]
-  %[1]s [-d] config [set <target> <key> <value> | delete <target> [<key>]]
+  %[1]s [options] get <hash>
+  %[1]s [options] put <input>...
+  %[1]s [options] import <input>...
+  %[1]s [options] index [rehash]
+  %[1]s [options] meta <hash> [set <key> <value> | delete [<key>]]
 
 Options:
-  -c --concurrency=<num>   Max concurrent operations [default: 10].
-  -d --debug               Show debugging output [default: false].
-  -h --help                Show this screen.
-  -v --version             Show version.
-
-Examples
-  %[1]s config set local type localDisk
-  %[1]s config set local home ~/memorybox
-  %[1]s config set local extra value
-  %[1]s config
-  %[1]s config delete local extra
-  %[1]s -d put local **/*.go
-  %[1]s -d put local https://scaleout.team/logo.svg  
-  printf "data" | %[1]s -d put local -
-  %[1]s -d get local 3a
-  %[1]s -d meta local 3a | jq
-  %[1]s -d meta local 3a set newKey someValue
-  %[1]s -d meta local 3a delete newKey
+  -c --config=<path>       Path to config file [default: ~/.memorybox/config].
+  -d --debug               Show debugging output [default: false].  
+  -m --max=<num>           Max concurrent operations [default: 10].
+  -t --target=<name>       Target store [default: default].
 `
 
-// Flags provides a typed interface to all supported command line arguments.
-type Flags struct {
-	Config      bool
-	Delete      bool
-	Target      string
-	Set         bool
-	Key         string
-	Value       string
-	Put         bool
-	Import      bool
-	Index       bool
-	Get         bool
-	Meta        bool
-	Input       []string
-	Hash        string
-	Concurrency int
-	Debug       bool
+func (ctx *ctx) help(_ []string) error {
+	return fmt.Errorf(usageTemplate, ctx.name)
 }
 
-// Runner implements simplecli.Runner in the context of memorybox.
-type Runner struct {
-	ctx        context.Context
-	cancel     func()
-	Logger     *log.Logger
-	ConfigFile *configfile.ConfigFile
-	Flags      Flags
-	Store      store.Store
-	PathConfig string
+func (ctx *ctx) get(args []string) error {
+	return store.Get(ctx.background, ctx.store, args[0], ctx.ui.output)
 }
 
-// New creates a runner with all the required configuration.
-func New(logger *log.Logger) *Runner {
-	ctx, cancel := context.WithCancel(context.Background())
-	return &Runner{
-		ctx:        ctx,
-		cancel:     cancel,
-		Logger:     logger,
-		PathConfig: "~/.memorybox/config",
-	}
+func (ctx *ctx) put(args []string) error {
+	return store.Put(ctx.background, ctx.store, args, []string{}, ctx.flag.Max, ctx.ui.verbose, ctx.ui.output)
 }
 
-// ConfigPath returns the canonical location of the memorybox config file.
-func (run *Runner) ConfigPath() string {
-	return run.PathConfig
+func (ctx *ctx) importFn(args []string) error {
+	return store.Import(ctx.background, ctx.store, args, ctx.flag.Max, ctx.ui.verbose, ctx.ui.output)
 }
 
-// Configure is responsible parsing what was provided on the command line.
-func (run *Runner) Configure(args []string, configData io.Reader) error {
-	var err error
-	// Respect what the user named the binary.
-	usage := fmt.Sprintf(usageTemplate, args[0])
-	// Parse command line flags.
-	opts, _ := (&docopt.Parser{
-		HelpHandler: func(parseErr error, usage string) {
-			err = parseErr
-		},
-	}).ParseArgs(usage, args[1:], version)
-	if err != nil {
-		return fmt.Errorf("%s", usage)
-	}
-	// Populate flags struct with our command line options.
-	err = opts.Bind(&run.Flags)
-	// Turn logger off unless user has requested it.
-	if run.Flags.Debug {
-		run.Logger.SetOutput(os.Stderr)
-	}
-	configFile, configFileErr := configfile.NewConfigFile(configData)
-	if configFileErr != nil {
-		return configFileErr
-	}
-	run.ConfigFile = configFile
-	if !run.Flags.Config {
-		// Only create a backing store if we're going to interact with one.
-		target := run.ConfigFile.Target(run.Flags.Target)
-		store, storeErr := store.New(*target)
-		if storeErr != nil {
-			return fmt.Errorf("failed to load %v: %s", target, storeErr)
-		}
-		run.Store = store
-	}
+func (ctx *ctx) index(_ []string) error {
+	return store.Index(ctx.background, ctx.store, ctx.flag.Max, false, ctx.ui.verbose, ctx.ui.output)
+}
+
+func (ctx *ctx) indexRehash(_ []string) error {
+	return store.Index(ctx.background, ctx.store, ctx.flag.Max, true, ctx.ui.verbose, ctx.ui.output)
+}
+
+func (ctx *ctx) metaGet(args []string) error {
+	return store.MetaGet(ctx.background, ctx.store, args[0], ctx.ui.output)
+}
+
+func (ctx *ctx) metaSet(args []string) error {
+	return store.MetaSet(ctx.background, ctx.store, args[0], args[1], args[2], ctx.ui.verbose, ctx.ui.output)
+}
+
+func (ctx *ctx) metaDelete(args []string) error {
+	return store.MetaDelete(ctx.background, ctx.store, args[0], args[1], ctx.ui.verbose, ctx.ui.output)
+}
+
+func (ctx *ctx) version(_ []string) error {
+	ctx.ui.output.Printf("%s", version)
 	return nil
-}
-
-// Dispatch actually runs our commands.
-func (run *Runner) Dispatch() error {
-	f := run.Flags
-	if f.Put {
-		return store.Put(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger, []string{})
-	}
-	if f.Import {
-		return store.Import(run.ctx, run.Store, run.Flags.Input, run.Flags.Concurrency, run.Logger)
-	}
-	if f.Index {
-		return store.Index(run.ctx, run.Store, run.Flags.Concurrency, run.Logger, false, os.Stdout)
-	}
-	if f.Get {
-		return store.Get(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
-	}
-	if f.Config {
-		if f.Delete {
-			if run.Flags.Target != "" {
-				run.ConfigFile.Target(run.Flags.Target).Delete(run.Flags.Key)
-				return nil
-			}
-			run.ConfigFile.Delete(run.Flags.Target)
-			return nil
-		}
-		if f.Set {
-			run.ConfigFile.Target(run.Flags.Target).Set(run.Flags.Key, run.Flags.Value)
-			return nil
-		}
-		log.Printf("%s", run.ConfigFile)
-		return nil
-	}
-	if f.Meta {
-		if f.Delete {
-			return store.MetaDelete(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key)
-		}
-		if f.Set {
-			return store.MetaSet(run.ctx, run.Store, run.Flags.Hash, run.Flags.Key, run.Flags.Value)
-		}
-		return store.MetaGet(run.ctx, run.Store, run.Flags.Hash, os.Stdout)
-	}
-	return fmt.Errorf("command not implemented")
-}
-
-// SaveConfig gives the program an opportunity to serialized the content of the
-// in-memory config file to a writer that is handled by the cli runner.
-func (run *Runner) SaveConfig(writer io.Writer) error {
-	return run.ConfigFile.Save(writer)
-}
-
-// Terminate handles SIGTERM signals.
-func (run *Runner) Terminate() {
-	log.Printf("shutdown signal recieved, cleaning up")
-	run.cancel()
-	time.Sleep(time.Second * 5)
 }
