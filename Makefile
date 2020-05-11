@@ -20,7 +20,4 @@ build: fmt lint vet test
 run:
 	go run ./...
 
-container: build
-	docker build -t memorybox .
-
-.PHONY: all fmt lint vet test build run container
+.PHONY: all fmt lint vet test build run

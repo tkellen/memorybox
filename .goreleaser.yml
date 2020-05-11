@@ -9,16 +9,6 @@ builds:
   - linux
   - darwin
   - windows
-dockers:
-- goos: linux
-  goarch: amd64
-  binaries:
-  - memorybox
-  builds:
-  - memorybox
-  image_templates:
-  - "tkellen/{{.ProjectName}}:latest"
-  - "tkellen/{{.ProjectName}}:{{ .Tag }}"
 archives:
 - name_template: '{{ .ProjectName }}_{{ .Os }}_{{ .Arch }}'
   replacements:

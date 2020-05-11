@@ -23,6 +23,8 @@ jobs:
       run: |
         go build -v .
         go test -v $(go list ./... | grep -v hack) -coverprofile=profile.cov
+      env:
+        CGO_ENABLED: 0
     - name: push code coverage to coveralls.io
       if: matrix.os == 'ubuntu-latest'
       uses: shogo82148/actions-goveralls@v1.2.2

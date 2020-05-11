@@ -170,7 +170,8 @@ func (ctx *ctx) commands() *cli.Tree {
 }
 
 const usageTemplate = `Usage:
-  %[1]s [options] hash <input>
+  %[1]s version
+  %[1]s hash <input>
   %[1]s [options] get <request>
   %[1]s [options] put <input>...
   %[1]s [options] import <input>
@@ -240,3 +241,4 @@ func (ctx *ctx) version(_ []string) error {
 	ctx.logger.Stdout.Printf("%s", version)
 	return nil
 }
+

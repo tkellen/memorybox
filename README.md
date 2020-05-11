@@ -1,11 +1,10 @@
-# memorybox ![build and test](https://github.com/tkellen/memorybox/workflows/build%20and%20test/badge.svg?branch=master) [![Coverage Status](https://coveralls.io/repos/github/tkellen/memorybox/badge.svg?branch=master)](https://coveralls.io/github/tkellen/memorybox?branch=master)
+# memorybox ![build and test](https://github.com/tkellen/memorybox/workflows/build%20and%20test/badge.svg?branch=master) [![Coverage Status](https://coveralls.io/repos/github/tkellen/memorybox/badge.svg?branch=master&cachebust=true)](https://coveralls.io/github/tkellen/memorybox?branch=master)
 > structured digital archival. simple.
 
 # Introduction
 This project makes curating mixed digital media collections simple. In order for
 the previous statement to be true, users must understand how to use the command
-line on their computer. They must also understand how to read, write and
-transform JSON.
+line. They must also understand how to read, write and transform JSON.
 
 As a first principal, this project expects users to be responsible for the long
 term storage of their data. At the same time, it borrows ideas from distributed
@@ -13,8 +12,8 @@ storage systems like [IPFS].
 
 The design of this software is focused on autonomous operational simplicity. No
 databases. No filesystem specific features. No dependency on "the cloud". No
-decentralized blockchain. Just you, a computer, a bunch of files, and enough
-storage space to hold the things you've created. That's it.
+decentralized p2p blockchain dependencies. Just you, a computer, a bunch of
+files, and enough storage space to hold the things you've created. That's it.
 
 ## How does it work?
 First, "put" some data under the management of memorybox.
