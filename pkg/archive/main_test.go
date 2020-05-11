@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"github.com/google/go-cmp/cmp"
 	"github.com/mattetti/filebuffer"
-	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"io"
 	"io/ioutil"
@@ -15,6 +14,16 @@ import (
 	"reflect"
 	"testing"
 )
+
+// IdentityHash is a noop hashing function for testing that returns a string
+// value of the input (assumes ASCII input).
+func IdentityHash(source io.Reader) (string, int64, error) {
+	bytes, err := ioutil.ReadAll(source)
+	if err != nil {
+		return "", 0, err
+	}
+	return string(bytes) + "-identity", int64(len(bytes)), nil
+}
 
 func TestSha256(t *testing.T) {
 	input := []byte("test")
@@ -214,14 +223,14 @@ func TestNew(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"datafile is detected and name is set by hashing input content": {
-			hashFn:       testingstore.IdentityHash,
+			hashFn:       IdentityHash,
 			data:         filebuffer.New([]byte("test")),
 			expectedName: "test-identity",
 			isMetaFile:   false,
 			expectedErr:  nil,
 		},
 		fmt.Sprintf("metafile is detected and name is set by reading %s if content is memorybox json", archive.MetaKeyFileName): {
-			hashFn:       testingstore.IdentityHash,
+			hashFn:       IdentityHash,
 			data:         filebuffer.New([]byte(`{"memorybox":{"file":"wacky"}}`)),
 			expectedName: archive.MetaFileNameFrom("wacky"),
 			isMetaFile:   true,
@@ -344,7 +353,7 @@ func TestFile_Read(t *testing.T) {
 	table := map[string]testCase{
 		"datafile": func() testCase {
 			bytes := []byte("test")
-			file, err := archive.New("test", filebuffer.New(bytes), testingstore.IdentityHash)
+			file, err := archive.New("test", filebuffer.New(bytes), IdentityHash)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -355,7 +364,7 @@ func TestFile_Read(t *testing.T) {
 		}(),
 		"metafile": func() testCase {
 			bytes := []byte(`{"memorybox":{"file":"test"}}`)
-			file, err := archive.New("test", filebuffer.New(bytes), testingstore.IdentityHash)
+			file, err := archive.New("test", filebuffer.New(bytes), IdentityHash)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -398,6 +407,11 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 			expected:     "test-identity",
 			immutableKey: true,
 		},
+		"empty key returns nil": {
+			key:      "",
+			input:    "value",
+			expected: nil,
+		},
 		"string values can be set and retrieved": {
 			key:      "test",
 			input:    "value",
@@ -437,7 +451,7 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			f, err := archive.New("test", filebuffer.New([]byte(`{"memorybox":{"file":"test-identity"}}`)), testingstore.IdentityHash)
+			f, err := archive.New("test", filebuffer.New([]byte(`{"memorybox":{"file":"test-identity"}}`)), IdentityHash)
 			if err != nil {
 				t.Fatalf("test setup: %s", err)
 			}
@@ -453,6 +467,57 @@ func TestFile_MetaSetGetDelete(t *testing.T) {
 			}
 			if !test.immutableKey && f.MetaGet(test.key) != nil {
 				t.Fatal("expected delete to remove key")
+			}
+		})
+	}
+}
+
+func TestFile_MetaSetRaw(t *testing.T) {
+	type testCase struct {
+		input       string
+		expectedErr bool
+		checks      map[string]interface{}
+	}
+	table := map[string]testCase{
+		"object is merged into meta": {
+			input:       `{"keyOne":"foo","keyBar":"baz"}`,
+			expectedErr: false,
+			checks: map[string]interface{}{
+				"keyOne": "foo",
+				"keyBar": "baz",
+			},
+		},
+		"memorybox key is ignored": {
+			input:       `{"memorybox":{},"keyOne":"foo","keyBar":"baz"}`,
+			expectedErr: false,
+			checks: map[string]interface{}{
+				"memorybox": json.RawMessage("{\"file\":\"test-identity\"}"),
+				"keyOne":    "foo",
+				"keyBar":    "baz",
+			},
+		},
+		"invalid json errors": {
+			input:       `[ar":"baz"}`,
+			expectedErr: true,
+		},
+	}
+	for name, test := range table {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			f, _ := archive.New("test", filebuffer.New([]byte(`{"memorybox":{"file":"test-identity"}}`)), IdentityHash)
+			err := f.MetaSetRaw(test.input)
+			if err != nil && !test.expectedErr {
+				t.Fatalf("expected no error, saw %s", err)
+			}
+			if err == nil && test.expectedErr {
+				t.Fatalf("expected error, got %s", f.Meta())
+			}
+			if test.checks != nil {
+				for key, value := range test.checks {
+					if !reflect.DeepEqual(value, f.MetaGet(key)) {
+						t.Fatalf("expected %s, got %s", value, f.MetaGet(key))
+					}
+				}
 			}
 		})
 	}

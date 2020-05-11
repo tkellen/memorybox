@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"github.com/jessevdk/go-flags"
 	"github.com/mitchellh/go-homedir"
 	"github.com/tkellen/cli"
+	"github.com/tkellen/memorybox/internal/fetch"
+	"github.com/tkellen/memorybox/pkg/archive"
+	"github.com/tkellen/memorybox/pkg/operations"
 	"github.com/tkellen/memorybox/pkg/store"
 	"io"
 	"io/ioutil"
@@ -18,16 +22,18 @@ import (
 )
 
 // Run executes memorybox functionality from command line arguments.
-func Run(args []string, stdout io.Writer, stderr io.Writer) (int, error) {
+func Run(args []string, stdout io.Writer, stderr io.Writer) int {
+	// Disable global logger output.
+	log.SetOutput(ioutil.Discard)
 	// Create context to pass into all commands to enable cancellation.
 	background, cancel := context.WithCancel(context.Background())
 	// Start building context for commands.
 	ctx := ctx{
 		name: path.Base(args[0]),
-		ui: &ui{
-			output:  log.New(stdout, "", 0),
-			error:   log.New(stderr, "", 0),
-			verbose: log.New(ioutil.Discard, "", 0),
+		logger: &operations.Logger{
+			Stdout:  log.New(stdout, "", 0),
+			Stderr:  log.New(stderr, "", 0),
+			Verbose: log.New(ioutil.Discard, "", 0),
 		},
 		background: background,
 	}
@@ -36,7 +42,7 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) (int, error) {
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 	go func() {
 		<-c
-		ctx.ui.error.Print("shutdown signal received, cleaning up")
+		ctx.logger.Stderr.Print("shutdown signal received, cleaning up")
 		// Tell all goroutines that their context has been cancelled.
 		cancel()
 		// Give some time to clean up gracefully.
@@ -45,26 +51,26 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) (int, error) {
 	// Extract global options and return remaining command line arguments.
 	remain, err := flags.NewParser(&ctx.flag, flags.PassDoubleDash).ParseArgs(args[1:])
 	if err != nil {
-		return 1, err
+		ctx.logger.Stderr.Print(err)
+		return 1
 	}
 	// Enable verbose debugging to error stream if user has requested it.
 	if ctx.flag.Debugging {
-		ctx.ui.verbose.SetOutput(ctx.ui.error.Writer())
+		ctx.logger.Verbose.SetOutput(ctx.logger.Stderr.Writer())
 	}
-	ctx.ui.verbose.Printf("%s", ctx.flag)
+	ctx.logger.Verbose.Printf("%s", ctx.flag)
 	// Find full path to configuration file.
-	fullPath, expandErr := homedir.Expand(ctx.flag.ConfigPath)
-	if expandErr != nil {
-		return 1, expandErr
-	}
+	fullPath, _ := homedir.Expand(ctx.flag.ConfigPath)
 	// Ensure configuration directory exists.
 	if err := os.MkdirAll(path.Dir(fullPath), 0755); err != nil {
-		return 1, err
+		ctx.logger.Stderr.Print(err)
+		return 1
 	}
 	// Open / ensure configuration file exists.
 	file, fileErr := os.OpenFile(fullPath, os.O_RDWR|os.O_CREATE, 0644)
 	if fileErr != nil {
-		return 1, fileErr
+		ctx.logger.Stderr.Print(err)
+		return 1
 	}
 	// Load configuration file.
 	config, configErr := cli.NewConfigFile(file, cli.ConfigTarget{
@@ -72,7 +78,8 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) (int, error) {
 		"path": "~/memorybox",
 	})
 	if configErr != nil {
-		return 1, configErr
+		ctx.logger.Stderr.Print(err)
+		return 1
 	}
 	ctx.config = config
 	// Running this program may modify the configuration file. Ensure it is
@@ -89,26 +96,24 @@ func Run(args []string, stdout io.Writer, stderr io.Writer) (int, error) {
 		// Fetch target store config.
 		target, targetErr := config.Target(ctx.flag.Target)
 		if targetErr != nil {
-			return 1, targetErr
+			ctx.logger.Stderr.Print(err)
+			return 1
 		}
 		ctx.target = target
-		store, storeErr := store.New(*ctx.target)
+		s, storeErr := store.New(*ctx.target)
 		if storeErr != nil {
-			return 1, fmt.Errorf("failed to load %v: %s", ctx.flag.Target, storeErr)
+			ctx.logger.Stderr.Print(fmt.Errorf("failed to load %v: %s", ctx.flag.Target, storeErr))
+			return 1
 		}
-		ctx.store = store
+		ctx.store = s
 	}
 	if err := ctx.commands().Dispatch(remain); err != nil {
-		return 1, err
+		if !errors.Is(err, context.Canceled) {
+			ctx.logger.Stderr.Print(err)
+		}
+		return 1
 	}
-	return 0, nil
-}
-
-// ui defines output streams for command invocations.
-type ui struct {
-	output  *log.Logger
-	error   *log.Logger
-	verbose *log.Logger
+	return 0
 }
 
 // flag describes options that are globally available for all commands.
@@ -128,7 +133,7 @@ func (f flag) String() string {
 type ctx struct {
 	name       string
 	background context.Context
-	ui         *ui
+	logger     *operations.Logger
 	config     *cli.ConfigFile
 	target     *cli.ConfigTarget
 	store      store.Store
@@ -142,6 +147,7 @@ func (ctx *ctx) commands() *cli.Tree {
 		SubCommands: cli.Map{
 			"version": ctx.version,
 			"help":    ctx.help,
+			"hash":    cli.Fn{Fn: ctx.hash, MinArgs: 1, Help: ctx.help},
 			"get":     cli.Fn{Fn: ctx.get, MinArgs: 1, Help: ctx.help},
 			"put":     cli.Fn{Fn: ctx.put, MinArgs: 1, Help: ctx.help},
 			"import":  cli.Fn{Fn: ctx.importFn, MinArgs: 1, Help: ctx.help},
@@ -149,6 +155,7 @@ func (ctx *ctx) commands() *cli.Tree {
 				Fn: ctx.index,
 				SubCommands: cli.Map{
 					"rehash": ctx.indexRehash,
+					"update": cli.Fn{Fn: ctx.indexUpdate, MinArgs: 1, Help: ctx.help},
 				},
 			},
 			"meta": cli.Tree{
@@ -163,11 +170,12 @@ func (ctx *ctx) commands() *cli.Tree {
 }
 
 const usageTemplate = `Usage:
-  %[1]s [options] get <hash>
+  %[1]s [options] hash <input>
+  %[1]s [options] get <request>
   %[1]s [options] put <input>...
-  %[1]s [options] import <input>...
-  %[1]s [options] index [rehash]
-  %[1]s [options] meta <hash> [set <key> <value> | delete [<key>]]
+  %[1]s [options] import <input>
+  %[1]s [options] index [rehash | update <input>]
+  %[1]s [options] meta <request> [set <key> <value> | delete <key>]
 
 Options:
   -c --config=<path>       Path to config file [default: ~/.memorybox/config].
@@ -180,39 +188,55 @@ func (ctx *ctx) help(_ []string) error {
 	return fmt.Errorf(usageTemplate, ctx.name)
 }
 
+func (ctx *ctx) hash(args []string) error {
+	return fetch.One(ctx.background, args[0], func(request string, src io.ReadSeeker) error {
+		digest, _, _ := archive.Sha256(src)
+		ctx.logger.Stdout.Println(digest)
+		return nil
+	})
+}
+
 func (ctx *ctx) get(args []string) error {
-	return store.Get(ctx.background, ctx.store, args[0], ctx.ui.output)
+	return operations.Get(ctx.background, ctx.logger, ctx.store, args[0])
 }
 
 func (ctx *ctx) put(args []string) error {
-	return store.Put(ctx.background, ctx.store, args, []string{}, ctx.flag.Max, ctx.ui.verbose, ctx.ui.output)
+	return operations.Put(ctx.background, ctx.logger, ctx.store, ctx.flag.Max, args, []string{})
 }
 
 func (ctx *ctx) importFn(args []string) error {
-	return store.Import(ctx.background, ctx.store, args, ctx.flag.Max, ctx.ui.verbose, ctx.ui.output)
+	return fetch.One(ctx.background, args[0], func(request string, src io.ReadSeeker) error {
+		return operations.Import(ctx.background, ctx.logger, ctx.store, ctx.flag.Max, src)
+	})
 }
 
 func (ctx *ctx) index(_ []string) error {
-	return store.Index(ctx.background, ctx.store, ctx.flag.Max, false, ctx.ui.verbose, ctx.ui.output)
+	return operations.Index(ctx.background, ctx.logger, ctx.store, ctx.flag.Max, false)
 }
 
 func (ctx *ctx) indexRehash(_ []string) error {
-	return store.Index(ctx.background, ctx.store, ctx.flag.Max, true, ctx.ui.verbose, ctx.ui.output)
+	return operations.Index(ctx.background, ctx.logger, ctx.store, ctx.flag.Max, true)
+}
+
+func (ctx *ctx) indexUpdate(args []string) error {
+	return fetch.One(ctx.background, args[0], func(request string, src io.ReadSeeker) error {
+		return operations.IndexUpdate(ctx.background, ctx.logger, ctx.store, ctx.flag.Max, src)
+	})
 }
 
 func (ctx *ctx) metaGet(args []string) error {
-	return store.MetaGet(ctx.background, ctx.store, args[0], ctx.ui.output)
+	return operations.MetaGet(ctx.background, ctx.logger, ctx.store, args[0])
 }
 
 func (ctx *ctx) metaSet(args []string) error {
-	return store.MetaSet(ctx.background, ctx.store, args[0], args[1], args[2], ctx.ui.verbose, ctx.ui.output)
+	return operations.MetaSet(ctx.background, ctx.logger, ctx.store, args[0], args[1], args[2])
 }
 
 func (ctx *ctx) metaDelete(args []string) error {
-	return store.MetaDelete(ctx.background, ctx.store, args[0], args[1], ctx.ui.verbose, ctx.ui.output)
+	return operations.MetaDelete(ctx.background, ctx.logger, ctx.store, args[0], args[1])
 }
 
 func (ctx *ctx) version(_ []string) error {
-	ctx.ui.output.Printf("%s", version)
+	ctx.logger.Stdout.Printf("%s", version)
 	return nil
 }

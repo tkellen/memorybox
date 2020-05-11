@@ -1,23 +1,20 @@
-package store_test
+package operations_test
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/mattetti/filebuffer"
-	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
-	"github.com/tkellen/memorybox/pkg/store"
+	"github.com/tkellen/memorybox/pkg/operations"
 	"io/ioutil"
-	"log"
 	"os"
 	"testing"
 )
 
 func TestMetaGet(t *testing.T) {
 	type testCase struct {
-		store         store.Store
+		store         *TestingStore
 		sink          *filebuffer.Buffer
 		fixtures      []*archive.File
 		request       string
@@ -30,7 +27,7 @@ func TestMetaGet(t *testing.T) {
 			metaFile := dataFile.MetaFile()
 			metaContent, _ := ioutil.ReadAll(dataFile.MetaFile())
 			return testCase{
-				store:         testingstore.New([]*archive.File{dataFile, metaFile}),
+				store:         NewTestingStore([]*archive.File{dataFile, metaFile}),
 				request:       dataFile.Name(),
 				expectedBytes: metaContent,
 				expectedErr:   nil,
@@ -40,7 +37,7 @@ func TestMetaGet(t *testing.T) {
 			dataFile, _ := archive.NewSha256("fixture", filebuffer.New([]byte("test")))
 			metaFile := dataFile.MetaFile()
 			metaContent, _ := ioutil.ReadAll(dataFile.MetaFile())
-			store := testingstore.New([]*archive.File{dataFile, metaFile})
+			store := NewTestingStore([]*archive.File{dataFile, metaFile})
 			store.GetReturnsClosedReader = true
 			return testCase{
 				store:         store,
@@ -56,7 +53,7 @@ func TestMetaGet(t *testing.T) {
 			sink := filebuffer.New([]byte{})
 			sink.Close()
 			return testCase{
-				store:         testingstore.New([]*archive.File{dataFile, metaFile}),
+				store:         NewTestingStore([]*archive.File{dataFile, metaFile}),
 				sink:          sink,
 				request:       dataFile.Name(),
 				expectedBytes: metaContent,
@@ -71,7 +68,9 @@ func TestMetaGet(t *testing.T) {
 			if test.sink != nil {
 				sink = test.sink
 			}
-			err := store.MetaGet(context.Background(), test.store, test.request, log.New(sink, "", 0))
+			logger := discardLogger()
+			logger.Stdout.SetOutput(sink)
+			err := operations.MetaGet(context.Background(), logger, test.store, test.request)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -88,20 +87,21 @@ func TestMetaGet(t *testing.T) {
 }
 
 func TestMetaSetAndDelete(t *testing.T) {
-	silentLogger := log.New(ioutil.Discard, "", 0)
 	ctx := context.Background()
 	dataFile, _ := archive.NewSha256("fixture", filebuffer.New([]byte("test")))
 	metaFile := dataFile.MetaFile()
-	testStore := testingstore.New([]*archive.File{dataFile, metaFile})
+	testStore := NewTestingStore([]*archive.File{dataFile, metaFile})
 	request := dataFile.Name()
 	expectedKeyAndValue := "test"
 	// add meta key
-	if err := store.MetaSet(ctx, testStore, request, expectedKeyAndValue, expectedKeyAndValue, silentLogger, silentLogger); err != nil {
+	if err := operations.MetaSet(ctx, discardLogger(), testStore, request, expectedKeyAndValue, expectedKeyAndValue); err != nil {
 		t.Fatal(err)
 	}
 	// get meta file again
 	getFile := filebuffer.New([]byte{})
-	if err := store.MetaGet(ctx, testStore, request, log.New(getFile, "", 0)); err != nil {
+	getFileLogger := discardLogger()
+	getFileLogger.Stdout.SetOutput(getFile)
+	if err := operations.MetaGet(ctx, getFileLogger, testStore, request); err != nil {
 		t.Fatal(err)
 	}
 	// check if value persisted
@@ -113,12 +113,14 @@ func TestMetaSetAndDelete(t *testing.T) {
 		t.Fatalf("expected key %s to be set to %s, saw %s", expectedKeyAndValue, expectedKeyAndValue, metaSetCheck.MetaGet(expectedKeyAndValue))
 	}
 	// remove key
-	if err := store.MetaDelete(ctx, testStore, request, expectedKeyAndValue, silentLogger, silentLogger); err != nil {
+	if err := operations.MetaDelete(ctx, discardLogger(), testStore, request, expectedKeyAndValue); err != nil {
 		t.Fatal(err)
 	}
 	// confirm key was removed by asking for it again
 	setFile := filebuffer.New([]byte{})
-	if err := store.MetaGet(ctx, testStore, request, log.New(setFile, "", 0)); err != nil {
+	setFileLogger := discardLogger()
+	setFileLogger.Stdout.SetOutput(setFile)
+	if err := operations.MetaGet(ctx, setFileLogger, testStore, request); err != nil {
 		t.Fatal(err)
 	}
 	metaDeleteCheck, metaDeleteCheckErr := archive.NewSha256("test", setFile)
@@ -131,22 +133,21 @@ func TestMetaSetAndDelete(t *testing.T) {
 }
 
 func TestMetaFailures(t *testing.T) {
-	silentLogger := log.New(ioutil.Discard, "", 0)
 	type testCase struct {
-		store         *testingstore.Store
+		store         *TestingStore
 		request       string
 		expectedBytes []byte
 		expectedErr   error
 	}
 	table := map[string]testCase{
 		"request missing metafile": {
-			store:         testingstore.New([]*archive.File{}),
+			store:         NewTestingStore([]*archive.File{}),
 			request:       "missing",
 			expectedBytes: nil,
 			expectedErr:   os.ErrNotExist,
 		},
 		"request with failed search": func() testCase {
-			store := testingstore.New([]*archive.File{})
+			store := NewTestingStore([]*archive.File{})
 			store.SearchErrorWith = errors.New("bad search")
 			return testCase{
 				store:         store,
@@ -158,7 +159,7 @@ func TestMetaFailures(t *testing.T) {
 		"request existing metafile with failed retrieval": func() testCase {
 			dataFile, _ := archive.NewSha256("fixture", filebuffer.New([]byte("test")))
 			metaFile := dataFile.MetaFile()
-			store := testingstore.New([]*archive.File{dataFile, metaFile})
+			store := NewTestingStore([]*archive.File{dataFile, metaFile})
 			store.GetErrorWith = errors.New("bad get")
 			return testCase{
 				store:         store,
@@ -171,7 +172,7 @@ func TestMetaFailures(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run("Meta "+name, func(t *testing.T) {
-			err := store.MetaGet(context.Background(), test.store, test.request, log.New(bytes.NewBuffer([]byte{}), "", 0))
+			err := operations.MetaGet(context.Background(), discardLogger(), test.store, test.request)
 			if err == nil {
 				t.Fatal(err)
 			}
@@ -180,7 +181,7 @@ func TestMetaFailures(t *testing.T) {
 			}
 		})
 		t.Run("MetaSet "+name, func(t *testing.T) {
-			err := store.MetaSet(context.Background(), test.store, test.request, "test", "test", silentLogger, silentLogger)
+			err := operations.MetaSet(context.Background(), discardLogger(), test.store, test.request, "test", "test")
 			if err == nil {
 				t.Fatal(err)
 			}
@@ -189,7 +190,7 @@ func TestMetaFailures(t *testing.T) {
 			}
 		})
 		t.Run("MetaDelete "+name, func(t *testing.T) {
-			err := store.MetaDelete(context.Background(), test.store, test.request, "test", silentLogger, silentLogger)
+			err := operations.MetaDelete(context.Background(), discardLogger(), test.store, test.request, "test")
 			if err == nil {
 				t.Fatal(err)
 			}

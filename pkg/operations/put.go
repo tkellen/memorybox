@@ -1,14 +1,16 @@
-package store
+package operations
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"github.com/tkellen/memorybox/internal/fetch"
 	"github.com/tkellen/memorybox/pkg/archive"
+	"github.com/tkellen/memorybox/pkg/store"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 	"io"
-	"log"
+	"io/ioutil"
 	"os"
 	"sync"
 )
@@ -31,12 +33,11 @@ import (
 // unlikely...
 func Put(
 	ctx context.Context,
-	store Store,
+	logger *Logger,
+	s store.Store,
+	concurrency int,
 	requests []string,
 	metadata []string,
-	concurrency int,
-	stderr *log.Logger,
-	stdout *log.Logger,
 ) error {
 	// The import function may send metadata to associate with data being put
 	// into the store. Detect if that is happening and make it easy to reason
@@ -47,7 +48,7 @@ func Put(
 	// automatically generated ones.
 	queue := make(chan *archive.File)
 	// Prepare a process function to handle every input.
-	reader := func(ctx context.Context, index int, item string, src io.ReadSeeker) error {
+	reader := func(index int, item string, src io.ReadSeeker) error {
 		file, err := archive.NewSha256(item, src)
 		if err != nil {
 			return err
@@ -55,7 +56,7 @@ func Put(
 		// If metadata has been supplied by the user, insert it into the
 		// file now.
 		if inlineMeta {
-			file.MetaSet("", metadata[index])
+			file.MetaSetRaw(metadata[index])
 		}
 		// Queue metadata files that are explicitly being copied using
 		// memorybox so they can be persisted last.
@@ -64,7 +65,7 @@ func Put(
 			return nil
 		}
 		// If this is a datafile, persist it now.
-		return putFile(ctx, store, file, stderr, stdout)
+		return putFile(ctx, logger, s, file)
 	}
 	// Process all inputs that are datafiles using the reader function above.
 	datafiles, datafilesCtx := errgroup.WithContext(ctx)
@@ -99,7 +100,7 @@ func Put(
 			}
 			metaFileGroup.Go(func() error {
 				defer sem.Release(1)
-				return putFile(ctx, store, file, stderr, stdout)
+				return putFile(ctx, logger, s, file)
 			})
 		}
 		return nil
@@ -111,51 +112,62 @@ func Put(
 // Put persists an archive.File and its metadata to the provided store.
 func putFile(
 	ctx context.Context,
-	store Store,
+	logger *Logger,
+	s store.Store,
 	file *archive.File,
-	stderr *log.Logger,
-	stdout *log.Logger,
 ) error {
 	// If file is a metafile, blindly write it and signal completion. There is
 	// currently no way of knowing if an incoming metafile is newer than the one
 	// it might clobber. If someone is manually moving metafiles it is safe to
 	// assume they are fine with this.
 	if file.IsMetaFile() {
-		stderr.Printf("%s -> %s (metafile detected)", file.Name(), file.Name())
-		stdout.Printf("%s\n", file.Meta())
-		return store.Put(ctx, file, file.Name())
+		logger.Verbose.Printf("%s -> %s (metafile detected)", file.Name(), file.Name())
+		logger.Stdout.Printf("%s", file.Meta())
+		return s.Put(ctx, file, file.Name())
 	}
 	eg := errgroup.Group{}
 	// Try to store datafile.
 	eg.Go(func() error {
-		if store.Exists(ctx, file.Name()) {
-			stderr.Printf("%s -> %s (skipped, exists)", file.Source(), file.Name())
+		if s.Exists(ctx, file.Name()) {
+			logger.Verbose.Printf("%s -> %s (skipped, exists)", file.Source(), file.Name())
 			return nil
 		}
-		stderr.Printf("%s -> %s", file.Source(), file.Name())
-		return store.Put(ctx, file, file.Name())
+		logger.Verbose.Printf("%s -> %s", file.Source(), file.Name())
+		return s.Put(ctx, file, file.Name())
 	})
 	// Create a metafile, but only if needed.
 	eg.Go(func() error {
 		metaFile := file.MetaFile()
 		metaFileName := metaFile.Name()
 		// See if there is a metafile for this datafile already.
-		meta, err := getBytes(ctx, store, metaFileName)
+		reader, getErr := s.Get(ctx, metaFileName)
 		// If data arrived, there is a metafile already, don't overwrite it.
-		if err == nil {
-			stderr.Printf("%s -> %s (skipped, exists)", file.Source(), metaFileName)
-			stdout.Printf("%s\n", meta)
+		if getErr == nil {
+			// ...but do minimal check to ensure it is valid metadata.
+			meta, readErr := ioutil.ReadAll(reader)
+			if readErr != nil {
+				return readErr
+			}
+			defer reader.Close()
+			// This should only happen if a meta file is changed by an external
+			// process.
+			if !archive.IsMetaData(meta) {
+				return store.Corrupted(fmt.Errorf("metafile %s missing %s key", metaFileName, archive.MetaKey))
+			}
+			// If there was no error, output the metadata and stop.
+			logger.Verbose.Printf("%s -> %s (skipped, exists)", file.Source(), metaFileName)
+			logger.Stdout.Printf("%s", meta)
 			return nil
 		}
 		// If there is a failure but it isn't related to a file not existing,
-		// hard fail and stop, something went wrong.
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			stderr.Printf("unable to validate presence of %s", metaFileName)
+		// note that something went wrong and allow overwriting.
+		if getErr != nil && !errors.Is(getErr, os.ErrNotExist) {
+			logger.Stderr.Printf("unable to validate presence of %s", metaFileName)
 		}
-		// Actually store the metafile now.
-		stderr.Printf("%s -> %s (generated)", file.Source(), metaFileName)
-		stdout.Printf("%s\n", metaFile.Meta())
-		return store.Put(ctx, metaFile, metaFileName)
+		// If here, the meta file was missing, store it now.g
+		logger.Verbose.Printf("%s -> %s (generated)", file.Source(), metaFileName)
+		logger.Stdout.Printf("%s", metaFile.Meta())
+		return s.Put(ctx, metaFile, metaFileName)
 	})
 	return eg.Wait()
 }

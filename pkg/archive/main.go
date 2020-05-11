@@ -3,6 +3,7 @@ package archive
 import (
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"github.com/mattetti/filebuffer"
 	hash "github.com/minio/sha256-simd"
 	"github.com/tidwall/gjson"
@@ -70,7 +71,7 @@ const MetaFilePrefix = MetaKey + "-meta-"
 // is only enforced to prevent memorybox from decoding potentially huge JSON
 // blobs to see if they are memorybox metadata vs just regular ol' json. This
 // value can be increased if a real world use-case dictates it.
-const MetaFileMaxSize = 1 * 1024 * 1024
+const MetaFileMaxSize = 5 * 1024 * 1024
 
 // Sha256 computes a sha256 message digest for a provided io.Reader.
 func Sha256(source io.Reader) (string, int64, error) {
@@ -234,16 +235,15 @@ func (f *File) MetaSet(key string, value string) {
 	if strings.Contains(key, MetaKey) {
 		return
 	}
-	path := "data"
-	if key != "" {
-		path = path + "." + key
+	if key == "" {
+		return
 	}
 	jsonValue := json.RawMessage{}
 	if err := json.Unmarshal([]byte(value), &jsonValue); err == nil {
-		f.meta, _ = sjson.SetBytes(f.meta, path, jsonValue)
+		f.meta, _ = sjson.SetBytes(f.meta, key, jsonValue)
 		return
 	}
-	f.meta, _ = sjson.SetBytes(f.meta, path, value)
+	f.meta, _ = sjson.SetBytes(f.meta, key, value)
 }
 
 // MetaDelete removes metadata from a file by key.
@@ -252,18 +252,31 @@ func (f *File) MetaDelete(key string) {
 	if strings.Contains(key, MetaKey) {
 		return
 	}
-	f.meta, _ = sjson.DeleteBytes(f.meta, "data."+key)
+	f.meta, _ = sjson.DeleteBytes(f.meta, key)
+}
+
+// MetaSetRaw takes an object and assigns every key into the meta field except
+// managed ones.
+func (f *File) MetaSetRaw(data string) error {
+	jsonData, ok := gjson.Parse(data).Value().(map[string]interface{})
+	if !ok {
+		return fmt.Errorf("%s is not valid json", data)
+	}
+	for key, value := range jsonData {
+		// Managed internally.
+		if strings.Contains(key, MetaKey) {
+			continue
+		}
+		f.meta, _ = sjson.SetBytes(f.meta, key, value)
+	}
+	return nil
 }
 
 // MetaGet fetches metadata from a file by key.
 func (f *File) MetaGet(key string) interface{} {
 	var value gjson.Result
 	var result json.RawMessage
-	if strings.Contains(key, MetaKey) {
-		value = gjson.GetBytes(f.meta, key)
-	} else {
-		value = gjson.GetBytes(f.meta, "data."+key)
-	}
+	value = gjson.GetBytes(f.meta, key)
 	if !value.Exists() {
 		return nil
 	}

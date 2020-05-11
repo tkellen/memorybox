@@ -4,13 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/tkellen/memorybox/internal/testingstore"
-	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/localdiskstore"
 	"github.com/tkellen/memorybox/pkg/objectstore"
 	"io"
-	"io/ioutil"
-	"os"
 )
 
 // Store defines a storage engine that can persist and retrieve content.
@@ -22,8 +18,6 @@ type Store interface {
 	String() string
 }
 
-var errCorrupted = errors.New("store corrupted")
-
 // New creates the appropriate type of store given the configuration supplied.
 func New(config map[string]string) (Store, error) {
 	storeType := config["type"]
@@ -33,31 +27,22 @@ func New(config map[string]string) (Store, error) {
 	if storeType == "s3" {
 		return objectstore.NewFromConfig(config), nil
 	}
-	if storeType == "testing" {
-		return testingstore.New([]*archive.File{}), nil
-	}
 	return nil, fmt.Errorf("unknown store type %s", storeType)
 }
 
-func getBytes(ctx context.Context, store Store, hash string) ([]byte, error) {
-	reader, err := store.Get(ctx, hash)
-	if err != nil {
-		return nil, err
-	}
-	result, readErr := ioutil.ReadAll(reader)
-	if readErr != nil {
-		return nil, readErr
-	}
-	return result, nil
+var errCorrupted = errors.New("store corrupted")
+
+// IsCorrupted wraps an error if an error from an operation on a store is the
+// result of corruption in the store from one of the following:
+// 1. Meta file missing data file.
+// 2. Data file missing meta file.
+// 3. Meta file pointing to wrong data file.
+// 4. Data file hashes to different filename.
+func IsCorrupted(err error) bool {
+	return errors.Is(err, errCorrupted)
 }
 
-func findOne(ctx context.Context, store Store, hash string) (string, error) {
-	matches, searchErr := store.Search(ctx, hash)
-	if searchErr != nil {
-		return "", fmt.Errorf("get: %w", searchErr)
-	}
-	if len(matches) != 1 {
-		return "", fmt.Errorf("%w: %d objects matched", os.ErrNotExist, len(matches))
-	}
-	return matches[0], nil
+// Corrupted determines if an error about a store indicates internal corruption.
+func Corrupted(err error) error {
+	return fmt.Errorf("%w: %s", errCorrupted, err)
 }

@@ -1,19 +1,15 @@
-package store_test
+package operations_test
 
 import (
 	"context"
 	"github.com/mattetti/filebuffer"
-	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
-	"github.com/tkellen/memorybox/pkg/store"
-	"io/ioutil"
-	"log"
+	"github.com/tkellen/memorybox/pkg/operations"
 	"strings"
 	"testing"
 )
 
 func TestPutSuccess(t *testing.T) {
-	silentLogger := log.New(ioutil.Discard, "", 0)
 	type testCase struct {
 		fixtures                 [][]byte
 		concurrency              int
@@ -60,11 +56,11 @@ func TestPutSuccess(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			inputs, done := fixtureServer(t, test.fixtures)
 			defer done()
-			testStore := testingstore.New([]*archive.File{})
+			testStore := NewTestingStore([]*archive.File{})
 			ctx := context.Background()
 			// Run put twice, it should be idempotent.
 			for i := 0; i < 2; i++ {
-				err := store.Put(ctx, testStore, inputs, []string{}, test.concurrency, silentLogger, silentLogger)
+				err := operations.Put(ctx, discardLogger(), testStore, test.concurrency, inputs, []string{})
 				if err != nil && test.expectedErr == nil {
 					t.Fatal(err)
 				}
@@ -103,14 +99,27 @@ func TestPutSuccess(t *testing.T) {
 }
 
 func TestPutFail(t *testing.T) {
-	err := store.Put(
+	err := operations.Put(
 		context.Background(),
-		testingstore.New([]*archive.File{}),
+		discardLogger(),
+		NewTestingStore([]*archive.File{}),
+		2,
 		[]string{"nope"},
 		[]string{},
+	)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+}
+
+func TestPutFailCorruptedMeta(t *testing.T) {
+	err := operations.Put(
+		context.Background(),
+		discardLogger(),
+		NewTestingStore([]*archive.File{}),
 		2,
-		log.New(ioutil.Discard, "", 0),
-		log.New(ioutil.Discard, "", 0),
+		[]string{"nope"},
+		[]string{},
 	)
 	if err == nil {
 		t.Fatal("expected error")

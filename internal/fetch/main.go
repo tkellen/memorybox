@@ -16,18 +16,37 @@ import (
 )
 
 // One takes a request string for any supported source (local file, url or
-// stdin) and returns an os.File + a boolean indicating whether the request was
-// a file  on disk (if it was not, the consumer should delete the file on close).
-func One(ctx context.Context, req string) (file *os.File, deleteOnClose bool, err error) {
-	return new(ctx).fetch(req)
+// stdin) and handles it with a supplied processing callback.
+func One(ctx context.Context, request string, process func(string, io.ReadSeeker) error) error {
+	// If the requested input is arriving from a location that does not
+	// originate on the machine where memorybox is running (e.g. a user
+	// instructing memorybox to fetch a URL) the fetch function will store the
+	// data in a temporary file. This ensures the  content can be be read
+	// multiple times if needed. For example the put function reads a file once
+	// for hashing, once to check to see if it contains metadata and again to
+	// actually send it  to the store).
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	file, deleteOnClose, fetchErr := new(ctx).fetch(request)
+	if fetchErr != nil {
+		return fetchErr
+	}
+	// In cases where a temp file was created by fetching, `deleteWhenDone` will
+	// be true. This ensures the underlying temp file is removed.
+	if deleteOnClose {
+		defer file.Close()
+		defer os.Remove(file.Name())
+	}
+	return process(request, file)
 }
 
-// Many does the same thing as One but lots at a time.
+// Many does the same thing as One but with gated concurrency.
 func Many(
 	ctx context.Context,
 	requests []string,
 	concurrency int,
-	process func(context.Context, int, string, io.ReadSeeker) error,
+	process func(int, string, io.ReadSeeker) error,
 ) error {
 	sem := semaphore.NewWeighted(int64(concurrency))
 	eg, egCtx := errgroup.WithContext(ctx)
@@ -39,26 +58,10 @@ func Many(
 			}
 			eg.Go(func() error {
 				defer sem.Release(1)
-				// If the source input is arriving from a location that does not
-				// originate on the machine where memorybox is running (e.g. a
-				// user instructing memorybox to fetch a URL) the fetch function
-				// will store the data in a temporary file. This ensures the
-				// content can be be read multiple times if needed. For example
-				// the put function reads a file once for hashing, once to check
-				// to see if it contains metadata and again to actually send it
-				// to the store).
-				file, deleteOnClose, fetchErr := new(ctx).fetch(item)
-				if fetchErr != nil {
-					return fetchErr
+				processOne := func(request string, src io.ReadSeeker) error {
+					return process(index, item, src)
 				}
-				// In cases where a temporary file has been created by fetching,
-				// `deleteWhenDone` will be true it is OK/required to delete
-				// the file when work with it is complete.
-				if deleteOnClose {
-					defer file.Close()
-					defer os.Remove(file.Name())
-				}
-				return process(ctx, index, item, file)
+				return One(egCtx, item, processOne)
 			})
 		}
 		return nil

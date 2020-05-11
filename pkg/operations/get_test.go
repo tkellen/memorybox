@@ -1,13 +1,12 @@
-package store_test
+package operations_test
 
 import (
 	"context"
 	"errors"
 	"github.com/google/go-cmp/cmp"
 	"github.com/mattetti/filebuffer"
-	"github.com/tkellen/memorybox/internal/testingstore"
 	"github.com/tkellen/memorybox/pkg/archive"
-	"github.com/tkellen/memorybox/pkg/store"
+	"github.com/tkellen/memorybox/pkg/operations"
 	"log"
 	"os"
 	"testing"
@@ -15,7 +14,7 @@ import (
 
 func TestGet(t *testing.T) {
 	type testCase struct {
-		store         *testingstore.Store
+		store         *TestingStore
 		fixtures      []*archive.File
 		request       string
 		expectedBytes []byte
@@ -35,21 +34,21 @@ func TestGet(t *testing.T) {
 	}
 	table := map[string]testCase{
 		"get existing file": {
-			store:         testingstore.New(fixtures),
+			store:         NewTestingStore(fixtures),
 			fixtures:      fixtures,
 			request:       fixtures[0].Name(),
 			expectedBytes: contents[0],
 			expectedErr:   nil,
 		},
 		"get missing file": {
-			store:         testingstore.New(fixtures),
+			store:         NewTestingStore(fixtures),
 			fixtures:      fixtures,
 			request:       "missing",
 			expectedBytes: nil,
 			expectedErr:   os.ErrNotExist,
 		},
 		"get with failed search": func() testCase {
-			store := testingstore.New(fixtures)
+			store := NewTestingStore(fixtures)
 			store.SearchErrorWith = errors.New("bad search")
 			return testCase{
 				store:         store,
@@ -60,7 +59,7 @@ func TestGet(t *testing.T) {
 			}
 		}(),
 		"get existing file with failed retrieval": func() testCase {
-			store := testingstore.New(fixtures)
+			store := NewTestingStore(fixtures)
 			store.GetErrorWith = errors.New("bad get")
 			return testCase{
 				store:         store,
@@ -71,7 +70,7 @@ func TestGet(t *testing.T) {
 			}
 		}(),
 		"get existing file with failed copy to sink": func() testCase {
-			store := testingstore.New(fixtures)
+			store := NewTestingStore(fixtures)
 			store.GetReturnsClosedReader = true
 			return testCase{
 				store:         store,
@@ -86,7 +85,7 @@ func TestGet(t *testing.T) {
 		test := test
 		t.Run(name, func(t *testing.T) {
 			sink := filebuffer.New([]byte{})
-			err := store.Get(context.Background(), test.store, test.request, log.New(sink, "", 0))
+			err := operations.Get(context.Background(), &operations.Logger{Stdout: log.New(sink, "", 0)}, test.store, test.request)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
