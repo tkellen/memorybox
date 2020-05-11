@@ -36,8 +36,10 @@ func Import(
 ) error {
 	var entries []importEntry
 	scanner := bufio.NewScanner(imports)
+	lineNo := 0
 	for scanner.Scan() {
-		fields := strings.SplitN(scanner.Text(), "\t", 2)
+		lineNo = lineNo + 1
+		fields := strings.SplitN(scanner.Text(), " ", 2)
 		// Allow import lines with no metadata.
 		if len(fields) < 2 {
 			fields = append(fields, "")
@@ -50,7 +52,7 @@ func Import(
 	// Get all metadata entries from the store.
 	index, indexErr := index(ctx, logger, s, concurrency, false)
 	if indexErr != nil {
-		return indexErr
+		return fmt.Errorf("indexing: %w", indexErr)
 	}
 	// Build index of every existing "source" file used in the store.
 	sourceIndex := map[string]bool{}

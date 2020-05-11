@@ -150,6 +150,7 @@ func (ctx *ctx) commands() *cli.Tree {
 			"hash":    cli.Fn{Fn: ctx.hash, MinArgs: 1, Help: ctx.help},
 			"get":     cli.Fn{Fn: ctx.get, MinArgs: 1, Help: ctx.help},
 			"put":     cli.Fn{Fn: ctx.put, MinArgs: 1, Help: ctx.help},
+			"delete":  cli.Fn{Fn: ctx.delete, MinArgs: 1, Help: ctx.help},
 			"import":  cli.Fn{Fn: ctx.importFn, MinArgs: 1, Help: ctx.help},
 			"index": cli.Tree{
 				Fn: ctx.index,
@@ -174,6 +175,7 @@ const usageTemplate = `Usage:
   %[1]s hash <input>
   %[1]s [options] get <request>
   %[1]s [options] put <input>...
+  %[1]s [options] delete <request>...
   %[1]s [options] import <input>
   %[1]s [options] index [rehash | update <input>]
   %[1]s [options] meta <request> [set <key> <value> | delete <key>]
@@ -203,6 +205,10 @@ func (ctx *ctx) get(args []string) error {
 
 func (ctx *ctx) put(args []string) error {
 	return operations.Put(ctx.background, ctx.logger, ctx.store, ctx.flag.Max, args, []string{})
+}
+
+func (ctx *ctx) delete(args []string) error {
+	return operations.Delete(ctx.background, ctx.store, ctx.flag.Max, args)
 }
 
 func (ctx *ctx) importFn(args []string) error {
@@ -241,4 +247,3 @@ func (ctx *ctx) version(_ []string) error {
 	ctx.logger.Stdout.Printf("%s", version)
 	return nil
 }
-

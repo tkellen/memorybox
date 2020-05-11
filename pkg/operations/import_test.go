@@ -29,7 +29,7 @@ func TestImport(t *testing.T) {
 			}
 			sources, done := fixtureServer(t, fixtures)
 			imports := filebuffer.New(
-				[]byte(fmt.Sprintf("%s\t{}\n%s\t{}\n", sources[0], sources[1])),
+				[]byte(fmt.Sprintf("%s {}\n%s {}\n", sources[0], sources[1])),
 			)
 			return testCase{
 				store:                    NewTestingStore([]*archive.File{}),
@@ -47,7 +47,7 @@ func TestImport(t *testing.T) {
 			}
 			sources, done := fixtureServer(t, fixtures)
 			imports := filebuffer.New(
-				[]byte(fmt.Sprintf("%s\t{}\n%s\t{}\n", sources[0], sources[1])),
+				[]byte(fmt.Sprintf("%s {}\n%s {}\n", sources[0], sources[1])),
 			)
 			return testCase{
 				store:                    NewTestingStore([]*archive.File{}),
@@ -65,7 +65,7 @@ func TestImport(t *testing.T) {
 			}
 			sources, done := fixtureServer(t, fixtures)
 			imports := filebuffer.New(
-				[]byte(fmt.Sprintf("%s\t{}\n%s\n", sources[0], sources[1])),
+				[]byte(fmt.Sprintf("%s {}\n%s\n", sources[0], sources[1])),
 			)
 			// trigger coverage on existing source file being skipped
 			dataFile, _ := archive.NewSha256(sources[1], filebuffer.New(fixtures[1]))
@@ -85,7 +85,7 @@ func TestImport(t *testing.T) {
 			}
 			sources, done := fixtureServer(t, fixtures)
 			imports := filebuffer.New(
-				[]byte(fmt.Sprintf("%s\t{}\n%s\t{\"test\":\"data\"}\n", sources[0], sources[0])),
+				[]byte(fmt.Sprintf("%s {}\n%s {\"test\":\"data\"}\n", sources[0], sources[0])),
 			)
 			return testCase{
 				store:          NewTestingStore([]*archive.File{}),

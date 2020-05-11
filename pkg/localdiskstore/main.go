@@ -49,6 +49,8 @@ func (s *Store) Put(_ context.Context, source io.Reader, hash string) error {
 	if _, err := io.Copy(file, source); err != nil {
 		return fmt.Errorf("write file: %w", err)
 	}
+	// Make Windows happy.
+	defer file.Close()
 	// Be absolutely sure the data has been persisted to disk.
 	return file.Sync()
 }
@@ -56,6 +58,11 @@ func (s *Store) Put(_ context.Context, source io.Reader, hash string) error {
 // Get finds an object in storage by name and returns an io.ReadCloser for it.
 func (s *Store) Get(_ context.Context, request string) (io.ReadCloser, error) {
 	return os.Open(filepath.Join(s.RootPath, request))
+}
+
+// Delete removes an object in storage by name.
+func (s *Store) Delete(_ context.Context, request string) error {
+	return os.Remove(filepath.Join(s.RootPath, request))
 }
 
 // Search finds matching files in storage by prefix.

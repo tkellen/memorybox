@@ -20,7 +20,7 @@ import (
 func Index(ctx context.Context, logger *Logger, s store.Store, concurrency int, rehash bool) error {
 	data, indexErr := index(ctx, logger, s, concurrency, rehash)
 	if indexErr != nil {
-		return indexErr
+		return fmt.Errorf("indexing: %w", indexErr)
 	}
 	for _, item := range data {
 		logger.Stdout.Printf("%s", item)

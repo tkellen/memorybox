@@ -137,7 +137,7 @@ func collate(ctx context.Context, s store.Store) (datafiles map[string]struct{},
 	metafiles = map[string]struct{}{}
 	files, searchErr := s.Search(ctx, "")
 	if searchErr != nil {
-		return nil, nil, err
+		return nil, nil, searchErr
 	}
 	for _, file := range files {
 		if archive.IsMetaFileName(file) {

@@ -143,6 +143,12 @@ func (s *TestingStore) Get(_ context.Context, request string) (io.ReadCloser, er
 	return nil, fmt.Errorf("not in store")
 }
 
+// Delete removes an object in storage.
+func (s *TestingStore) Delete(_ context.Context, request string) error {
+	s.Data.Delete(request)
+	return nil
+}
+
 // Exists determines if a requested object exists in the TestingStore.
 func (s *TestingStore) Exists(_ context.Context, request string) bool {
 	exists := false

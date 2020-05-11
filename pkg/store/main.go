@@ -14,6 +14,7 @@ type Store interface {
 	Exists(context.Context, string) bool
 	Get(context.Context, string) (io.ReadCloser, error)
 	Put(context.Context, io.Reader, string) error
+	Delete(context.Context, string) error
 	Search(context.Context, string) ([]string, error)
 	String() string
 }

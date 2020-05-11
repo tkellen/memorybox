@@ -93,7 +93,7 @@ func TestIndex(t *testing.T) {
 				rehash:   true,
 				expected: nil,
 				checkErr: func(err error) bool {
-					return err == badTime
+					return errors.Is(err, badTime)
 				},
 			}
 		}(),
@@ -108,7 +108,7 @@ func TestIndex(t *testing.T) {
 				rehash:   false,
 				expected: nil,
 				checkErr: func(err error) bool {
-					return err == badTime
+					return errors.Is(err, badTime)
 				},
 			}
 		}(),

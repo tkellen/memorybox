@@ -50,9 +50,9 @@ func testSetup(t *testing.T) testFiles {
 		storePath:           storePath,
 		configPath:          configFile,
 		configFileHash:      hash,
-		goodImportFile:      tempFile(t, fmt.Sprintf("%s\t{\"test\":\"meta\"}\n", configFile)),
+		goodImportFile:      tempFile(t, fmt.Sprintf("%s {\"test\":\"meta\"}\n", configFile)),
 		goodIndexUpdateFile: tempFile(t, fmt.Sprintf("{\"memorybox\":{\"file\":\"%[1]s\"}}\n{\"memorybox\":{\"file\":\"%[1]s\"}}\n", hash)),
-		badImportFile:       tempFile(t, "239487621384792,,,\n\n12312346asfkjJASKF*231\t\n\t"),
+		badImportFile:       tempFile(t, "239487621384792,,,\n\n12312346asfkjJASKF*231 \n "),
 		badIndexUpdateFile:  tempFile(t, fmt.Sprintf("{\"memorybox\":{\"file\":\"%[1]s\"}}\n{\"memorybox\":{\"file\":\"missing\"}\n{\"memorybox\":{}}\n", hash)),
 	}
 }
@@ -71,6 +71,7 @@ func TestRunner(t *testing.T) {
 			"-c {{configPath}} -t test index",
 			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test index rehash",
 			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test index update {{goodIndexUpdateFile}}",
+			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test delete {{hash}}",
 			"-c {{configPath}} -t test import {{goodImportFile}}",
 		},
 		1: {
@@ -85,6 +86,7 @@ func TestRunner(t *testing.T) {
 			"-c {{configPath}} -t test meta",
 			"-c {{configPath}} -t test put missing",
 			"-c {{configPath}} -t test get missing",
+			"-c {{configPath}} -t test delete missing",
 			"-c {{configPath}} -t test meta missing",
 			"-c /root/cant/write/here/path version",
 			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test index update {{badIndexUpdateFile}}",
@@ -107,7 +109,7 @@ func TestRunner(t *testing.T) {
 				for index, cmd := range commands {
 					cmd = strings.Replace(cmd, "{{configPath}}", files.configPath, -1)
 					cmd = strings.Replace(cmd, "{{tempFile}}", files.configPath, -1)
-					cmd = strings.Replace(cmd, "{{hash}}", files.configFileHash[0:6], -1)
+					cmd = strings.Replace(cmd, "{{hash}}", files.configFileHash, -1)
 					cmd = strings.Replace(cmd, "{{goodImportFile}}", files.goodImportFile, -1)
 					cmd = strings.Replace(cmd, "{{goodIndexUpdateFile}}", files.goodIndexUpdateFile, -1)
 					cmd = strings.Replace(cmd, "{{badImportFile}}", files.badImportFile, -1)

@@ -58,10 +58,9 @@ func Many(
 			}
 			eg.Go(func() error {
 				defer sem.Release(1)
-				processOne := func(request string, src io.ReadSeeker) error {
-					return process(index, item, src)
-				}
-				return One(egCtx, item, processOne)
+				return One(egCtx, item, func(request string, src io.ReadSeeker) error {
+					return process(index, request, src)
+				})
 			})
 		}
 		return nil

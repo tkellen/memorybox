@@ -213,3 +213,26 @@ func TestStore_Search(t *testing.T) {
 		})
 	}
 }
+
+func TestStore_Delete(t *testing.T) {
+	tempDir, tempErr := ioutil.TempDir("", "*")
+	if tempErr != nil {
+		t.Fatalf("test setup: %s", tempErr)
+	}
+	defer os.RemoveAll(tempDir)
+	store := localdiskstore.New(tempDir)
+	filename := "test"
+	expected := []byte(filename)
+	putErr := store.Put(context.Background(), bytes.NewReader(expected), filename)
+	if putErr != nil {
+		t.Fatal(putErr)
+	}
+	deleteErr := store.Delete(context.Background(), filename)
+	if deleteErr != nil {
+		t.Fatal(deleteErr)
+	}
+	storedFilePath := filepath.Join(tempDir, filename)
+	if _, err := os.Stat(storedFilePath); !os.IsNotExist(err) {
+		t.Fatalf("expected file %s not to exist.", storedFilePath)
+	}
+}

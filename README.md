@@ -47,16 +47,16 @@ matter how many files you import, the computed names will never conflict.
 file name.
 
 Want to import files and annotate them with data at the same time? No problem.
-Produce a tab delimited file where the first column on each line is the source
-file and the second column is arbitrary json data. For example:
+Produce file where the first column on each line is the source file and the
+second column is arbitrary json data. For example:
 ```
 ➜ cat <<EOF | memorybox import -
-https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg  {"flickr":{"id":"5152985571"},"name":"Nun Near Bayon in Angkor Thom"}
-https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg  {"flickr":{"id":"4997667491"},"name":"Tyler Shoveling Away Sand"}
-https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg  {"flickr":{"id":"4997795158"},"name":"Mongolian & Horse"}
-https://live.staticflickr.com/5044/5345981532_0ec5bbff9f_o.jpg  {"name":"Vietnamese Pot-bellied Piggies","flickr":{"id":"5345981532"}}
-https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg  {"flickr":{"id":"4439797619"},"name":"Tara"}
-https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg  {"flickr":{"id":"4664252420"},"name":"Our Bikes in a German Forest"}
+https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg {"flickr":{"id":"5152985571"},"name":"Nun Near Bayon in Angkor Thom"}
+https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg {"flickr":{"id":"4997667491"},"name":"Tyler Shoveling Away Sand"}
+https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg {"flickr":{"id":"4997795158"},"name":"Mongolian & Horse"}
+https://live.staticflickr.com/5044/5345981532_0ec5bbff9f_o.jpg {"name":"Vietnamese Pot-bellied Piggies","flickr":{"id":"5345981532"}}
+https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg {"flickr":{"id":"4439797619"},"name":"Tara"}
+https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg {"flickr":{"id":"4664252420"},"name":"Our Bikes in a German Forest"}
 EOF
 queued: 6, duplicates removed: 0, existing removed: 0
 {"flickr":{"id":"4997795158"},"name":"Mongolian & Horse","memorybox":{"file":"635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256","source":"https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg","size":759776,"importedAt":"2020-05-11T00:38:20Z"}}
@@ -212,6 +212,23 @@ meta files as you like with a single command.
 There is no visual mechanism for viewing what you have stored. It is up to you
 to build something to showcase it. I use this tool to support authoring a media
 heavy website that can be distributed via a USB thumb drive.
+
+### Example Object Storage Configs
+```
+targets:
+  aws:
+    type: s3
+    access_key_id: ...
+    secret_access_key: ...
+    bucket: [bucket-name]
+    endpoint: s3.amazonaws.com
+  digitalocean:
+    type: s3
+    access_key_id: ...
+    secret_access_key: ...
+    bucket: [spaces-name]
+    endpoint: nyc3.digitaloceanspaces.com
+```
 
 ## Benefits
 Data can be categorized and queried using any tool that interacts with JSON.

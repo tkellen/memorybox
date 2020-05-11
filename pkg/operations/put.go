@@ -139,35 +139,34 @@ func putFile(
 	eg.Go(func() error {
 		metaFile := file.MetaFile()
 		metaFileName := metaFile.Name()
-		// See if there is a metafile for this datafile already.
+		// If there is no meta file for this datafile already, create it.
+		if !s.Exists(ctx, metaFileName) {
+			// If here, the meta file was missing, store it now.
+			logger.Verbose.Printf("%s -> %s (generated)", file.Source(), metaFileName)
+			logger.Stdout.Printf("%s", metaFile.Meta())
+			return s.Put(ctx, metaFile, metaFileName)
+		}
+		// Otherwise, do some validation.
 		reader, getErr := s.Get(ctx, metaFileName)
-		// If data arrived, there is a metafile already, don't overwrite it.
-		if getErr == nil {
-			// ...but do minimal check to ensure it is valid metadata.
-			meta, readErr := ioutil.ReadAll(reader)
-			if readErr != nil {
-				return readErr
-			}
-			defer reader.Close()
-			// This should only happen if a meta file is changed by an external
-			// process.
-			if !archive.IsMetaData(meta) {
-				return store.Corrupted(fmt.Errorf("metafile %s missing %s key", metaFileName, archive.MetaKey))
-			}
-			// If there was no error, output the metadata and stop.
-			logger.Verbose.Printf("%s -> %s (skipped, exists)", file.Source(), metaFileName)
-			logger.Stdout.Printf("%s", meta)
-			return nil
-		}
 		// If there is a failure but it isn't related to a file not existing,
-		// note that something went wrong and allow overwriting.
+		// note that something went wrong and continue.
 		if getErr != nil && !errors.Is(getErr, os.ErrNotExist) {
-			logger.Stderr.Printf("unable to validate presence of %s", metaFileName)
+			logger.Stderr.Printf("unable to retrieve %s", metaFileName)
 		}
-		// If here, the meta file was missing, store it now.g
-		logger.Verbose.Printf("%s -> %s (generated)", file.Source(), metaFileName)
-		logger.Stdout.Printf("%s", metaFile.Meta())
-		return s.Put(ctx, metaFile, metaFileName)
+		meta, readErr := ioutil.ReadAll(reader)
+		if readErr != nil {
+			return readErr
+		}
+		defer reader.Close()
+		// This should only happen if a meta file is changed by an external
+		// process.
+		if !archive.IsMetaData(meta) {
+			return store.Corrupted(fmt.Errorf("%s metafile %s missing %s key", meta, metaFileName, archive.MetaKey))
+		}
+		// If there was no error, output the metadata and stop.
+		logger.Verbose.Printf("%s -> %s (skipped, exists)", file.Source(), metaFileName)
+		logger.Stdout.Printf("%s", meta)
+		return nil
 	})
 	return eg.Wait()
 }

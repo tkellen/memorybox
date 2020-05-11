@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/minio/minio-go/v6"
-	"github.com/minio/minio-go/v6/pkg/credentials"
 	"io"
 	"strings"
 )
@@ -22,6 +21,7 @@ type s3 interface {
 	GetObjectWithContext(context.Context, string, string, minio.GetObjectOptions) (*minio.Object, error)
 	ListObjects(string, string, bool, <-chan struct{}) <-chan minio.ObjectInfo
 	StatObjectWithContext(context.Context, string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
+	RemoveObject(string, string) error
 }
 
 // String returns a human friendly representation of the Store.
@@ -37,12 +37,10 @@ func New(bucket string, client s3) *Store {
 	}
 }
 
-// NewFromConfig instantiates a Store using configuration values that were
-// likely sourced from a configuration file target.
-// TODO: properly support aws with more settings
+// NewFromConfig instantiates a Store using configuration values from a config
+// file.
 func NewFromConfig(config map[string]string) *Store {
-	creds := credentials.NewEnvAWS()
-	client, _ := minio.NewWithCredentials("s3.amazonaws.com", creds, true, "us-east-1")
+	client, _ := minio.New(config["endpoint"], config["access_key_id"], config["secret_access_key"], true)
 	return New(config["bucket"], client)
 }
 
@@ -59,21 +57,29 @@ func (s *Store) Get(ctx context.Context, key string) (io.ReadCloser, error) {
 	return s.Client.GetObjectWithContext(ctx, s.Bucket, key, minio.GetObjectOptions{})
 }
 
+// Delete removes an object from storage.
+func (s *Store) Delete(_ context.Context, key string) error {
+	return s.Client.RemoveObject(s.Bucket, key)
+}
+
 // Search finds an object in storage by prefix and returns an array of matches
 func (s *Store) Search(ctx context.Context, search string) ([]string, error) {
 	var matches []string
+	var err error
 	done := make(chan struct{})
 	defer close(done)
-	objects := s.Client.ListObjects(s.Bucket, search, true, done)
-	for object := range objects {
-		if ctx.Err() != nil {
+	for object := range s.Client.ListObjects(s.Bucket, search, true, done) {
+		err = ctx.Err()
+		matches = append(matches, object.Key)
+		if object.Err != nil {
+			err = object.Err
+		}
+		if err != nil {
+			matches = nil
 			break
 		}
-		if object.Err == nil {
-			matches = append(matches, object.Key)
-		}
 	}
-	return matches, ctx.Err()
+	return matches, err
 }
 
 // Exists determines if a given file exists in the object store already.

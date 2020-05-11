@@ -27,10 +27,11 @@ import (
 )
 
 type s3mock struct {
-	putObject   func(context.Context, string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
-	getObject   func(context.Context, string, string, minio.GetObjectOptions) (*minio.Object, error)
-	listObjects func(string, string, bool, <-chan struct{}) <-chan minio.ObjectInfo
-	statObject  func(context.Context, string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
+	putObject    func(context.Context, string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
+	getObject    func(context.Context, string, string, minio.GetObjectOptions) (*minio.Object, error)
+	listObjects  func(string, string, bool, <-chan struct{}) <-chan minio.ObjectInfo
+	statObject   func(context.Context, string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
+	removeObject func(string, string) error
 }
 
 func (s3 *s3mock) PutObjectWithContext(ctx context.Context, bucket string, key string, reader io.Reader, size int64, opts minio.PutObjectOptions) (int64, error) {
@@ -44,6 +45,9 @@ func (s3 *s3mock) StatObjectWithContext(ctx context.Context, bucket string, key 
 }
 func (s3 *s3mock) ListObjects(bucket string, prefix string, recursive bool, doneCh <-chan struct{}) <-chan minio.ObjectInfo {
 	return s3.listObjects(bucket, prefix, recursive, doneCh)
+}
+func (s3 *s3mock) RemoveObject(bucket string, key string) error {
+	return s3.removeObject(bucket, key)
 }
 
 func TestNewFromConfig(t *testing.T) {
@@ -189,6 +193,27 @@ func TestStore_Search(t *testing.T) {
 	}
 }
 
+func TestStore_Delete(t *testing.T) {
+	called := false
+	expectedBucket := "bucket"
+	expectedKey := "key"
+	objectstore.New(expectedBucket, &s3mock{
+		removeObject: func(bucket string, key string) error {
+			called = true
+			if expectedBucket != bucket {
+				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
+			}
+			if expectedKey != key {
+				t.Fatalf("expected %s as key, got %s", expectedKey, key)
+			}
+			return nil
+		},
+	}).Delete(context.Background(), expectedKey)
+	if !called {
+		t.Fatalf("expected call did not occur")
+	}
+}
+
 func TestStore_SearchContextCancel(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
@@ -220,5 +245,40 @@ func TestStore_SearchContextCancel(t *testing.T) {
 	}
 	if !errors.Is(err, ctx.Err()) {
 		t.Fatalf("expected error %s, got %s", ctx.Err(), err)
+	}
+}
+
+func TestStore_SearchError(t *testing.T) {
+	called := false
+	expectedBucket := "bucket"
+	expectedPrefix := "test"
+	expectedError := errors.New("object error")
+	_, err := objectstore.New(expectedBucket, &s3mock{
+		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
+			called = true
+			results := make(chan minio.ObjectInfo)
+			if expectedBucket != bucket {
+				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
+			}
+			if expectedPrefix != prefix {
+				t.Fatalf("expected %s as key, got %s", expectedPrefix, prefix)
+			}
+			go func() {
+				results <- minio.ObjectInfo{
+					Err: expectedError,
+				}
+				close(results)
+			}()
+			return results
+		},
+	}).Search(context.Background(), expectedPrefix)
+	if !called {
+		t.Fatalf("expected call did not occur")
+	}
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !errors.Is(err, expectedError) {
+		t.Fatalf("expected error %s, got %s", expectedError, err)
 	}
 }
