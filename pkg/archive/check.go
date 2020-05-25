@@ -122,6 +122,7 @@ func checkFiles(ctx context.Context, store Store, concurrency int, files file.Li
 				if f, err = store.Get(egCtx, name); err != nil {
 					return err
 				}
+				defer f.Close()
 				if file.IsMetaFileName(name) {
 					signatures[index], details[index], err = checkMeta(f)
 				} else {

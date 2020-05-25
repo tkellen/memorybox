@@ -139,7 +139,8 @@ func Test_fetch(t *testing.T) {
 					}
 					// Deleting the file after this function exits ensures that
 					// the stat call which follows will fail.
-					defer os.Remove(file.Name())
+					file.Close()
+					os.Remove(file.Name())
 					return file, err
 				}
 				return sys

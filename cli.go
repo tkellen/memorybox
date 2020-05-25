@@ -273,7 +273,7 @@ func (ctx *ctx) index(_ []string) error {
 			return err
 		} else {
 			for _, line := range index {
-				ctx.logger.Stdout.Print(bytes.TrimRight(line, "\n"))
+				ctx.logger.Stdout.Printf("%s", bytes.TrimRight(line, "\n"))
 			}
 			return nil
 		}

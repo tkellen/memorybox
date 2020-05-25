@@ -55,6 +55,7 @@ func storePutStatGetDelete(t *testing.T, store archive.Store) {
 	if err != nil {
 		t.Fatal("unable to read data from returned file")
 	}
+	getFile.Close()
 	if !bytes.Equal(input, output) {
 		t.Fatalf("expected output to be %s, got %s", input, output)
 	}

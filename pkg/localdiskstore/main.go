@@ -53,11 +53,12 @@ func (s *Store) Put(_ context.Context, source io.Reader, name string, lastModifi
 	if err != nil {
 		return fmt.Errorf("create file: %w", err)
 	}
-	defer f.Close()
 	if _, err := io.Copy(f, source); err != nil {
-		defer os.Remove(f.Name())
+		f.Close()
+		os.Remove(f.Name())
 		return fmt.Errorf("write file: %w", err)
 	}
+	defer f.Close()
 	defer os.Chtimes(f.Name(), lastModified, lastModified)
 	return f.Sync()
 }

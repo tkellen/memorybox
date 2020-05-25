@@ -2,21 +2,19 @@
 > structured digital archival. simple.
 
 # Introduction
-This project makes curating mixed digital media collections simple. In order for
-the previous statement to be true, users must understand how to use the command
-line. They must also understand how to read, write and transform JSON.
-
-As a first principal, this project expects users to be responsible for the long
-term storage of their data. At the same time, it borrows ideas from distributed
-storage systems like [IPFS].
+This project aims to make the curation and replication of mixed digital media
+collections simple. As a first principal, it is assumed that users will be
+directly responsible for the long term storage of their data. At the same time,
+it borrows ideas from distributed storage systems like [IPFS].
 
 The design of this software is focused on autonomous operational simplicity. No
 databases. No filesystem specific features. No dependency on "the cloud". No
-decentralized p2p blockchain dependencies. Just you, a computer, a bunch of
-files, and enough storage space to hold the things you've created. That's it.
+decentralized p2p blockchain magic. Just you, a computer, a bunch of files, and
+enough storage space to hold the things you've created. That's it.
 
 ## How does it work?
-First, "put" some data under the management of memorybox.
+First, "put" some data under the management of memorybox. It will respond with
+the metadata memorybox has assigned to it.
 ```sh
 ➜ printf "hello world" | memorybox put -
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:43:49Z","from":"devbox"},"source":"stdin"}}
@@ -44,11 +42,13 @@ matter how many files you import, the computed names will never conflict.
 /home/tkellen/memorybox/d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
 ```
 > Note: Names are deterministic. The same data will always generate the same
-file name.
+name.
 
-Want to import files and annotate them with data at the same time? No problem.
-Produce file where the first column on each line is the source file and the
-second column is arbitrary json data. For example:
+Want to import large quantities of files and annotate them with data at the same
+time? No problem. Produce a file where the first column on each line refers to a
+source file on disk or retrievable via a URL. The second (optional) column is
+arbitrary json data that will be included in the metadata for the file.
+For example:
 ```
 ➜ cat <<EOF | memorybox import travel -
 https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg {"flickr":{"id":"5152985571"},"name":"Nun Near Bayon in Angkor Thom"}
@@ -59,12 +59,12 @@ https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg {"flickr":{"id":"
 https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg {"flickr":{"id":"4664252420"},"name":"Our Bikes in a German Forest"}
 EOF
 queued: 6, duplicates removed: 0, existing removed: 0
-https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg -> 635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256
-https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg -> 9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256
-https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg -> 661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256
-https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg -> 160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
-https://live.staticflickr.com/5044/5345981532_0ec5bbff9f_o.jpg -> 2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256
-https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg -> 43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256
+{"memorybox":{"file":"635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256","import":{"at":"2020-05-25T02:25:14Z"},"source":"https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg"},"flickr":{"id":"4997795158"},"name":"Mongolian & Horse"}
+{"memorybox":{"file":"160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256","import":{"at":"2020-05-25T02:25:14Z"},"source":"https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg"},"flickr":{"id":"5152985571"},"name":"Nun Near Bayon in Angkor Thom"}
+{"memorybox":{"file":"2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256","import":{"at":"2020-05-25T02:25:14Z"},"source":"https://live.staticflickr.com/5044/5345981532_0ec5bbff9f_o.jpg"},"name":"Vietnamese Pot-bellied Piggies","flickr":{"id":"5345981532"}}
+{"memorybox":{"file":"9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256","import":{"at":"2020-05-25T02:25:15Z"},"source":"https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg"},"flickr":{"id":"4439797619"},"name":"Tara"}
+{"memorybox":{"file":"661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256","import":{"at":"2020-05-25T02:25:16Z"},"source":"https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg"},"flickr":{"id":"4997667491"},"name":"Tyler Shoveling Away Sand"}
+{"memorybox":{"file":"43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256","import":{"at":"2020-05-25T02:25:17Z"},"source":"https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg"},"flickr":{"id":"4664252420"},"name":"Our Bikes in a German Forest"}
 ```
 > Note: By default, importing will keep ten transfers running at the same time.
 You can tweak this to match the quantity your computer and network can support
@@ -73,8 +73,8 @@ as you like and the import functionality will always pick up where you left off.
 
 So, how do you find your files? This tool assumes the quantity of data being
 dealt with is large enough that the only meaningful way to curate it is
-programatically. In order to support this, a json "metafile" is created sibling
-to every imported "datafile".
+programatically. In order to support this, a json encoded "metafile" is created
+sibling to every imported "datafile".
 ```sh
 ➜ find ~/memorybox -type f | sort
 /home/tkellen/memorybox/160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
@@ -180,11 +180,11 @@ It is possible to check for missing metafiles:
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:47:58Z","from":"devbox"},"source":"stdin"}}
 ➜ rm ~/memorybox/memorybox-meta-b94d27*
 ➜ memorybox check pairing
-TYPE      COUNT   SOURCE         SIGNATURE
-all       21      file names     79d2debf188bea2645f36bae5ba5a86029712995c7e3a50a86c486b9f3f68b46
-data      11      file names     0d4a5c74a84eb4cd94b898731c4db5c6c5534b2e6bdac34e4f3f0c727c9853f2
-meta      10      file names     6c1880ba7b22f2ea0e5fdcfd170258055380c2b14ee6a66afb3aa8c9ee3ea21c
-unpaired  1       file names     4544b50389f946f441cb7e3c107389c5f6d0f07344e748124b4541f55fc17684
+TYPE        COUNT   SIGNATURE    SOURCE
+all         21      d4c0e5ce33   file names
+datafiles   11      9bc268d709   file names
+metafiles   10      cbe3d51625   file names
+unpaired    1       4544b50389   file names
 b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
 ```
 
@@ -193,11 +193,12 @@ It is possible to check for missing datafiles:
 ➜ printf "hello world" | memorybox put -
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:49:33Z","from":"devbox"},"source":"stdin"}}
 ➜ rm ~/memorybox/b94d27*
-TYPE      COUNT   SOURCE         SIGNATURE
-all       21      file names     9b6a5502efe09728b308c0a5d0ac3f4067a4e8a31de5ca5a4a25541692e8411f
-data      10      file names     f5fe46c8fbdd5a3d719f93152a7a787008f5b3084ef281387eff717b8d24d01e
-meta      11      file names     f77510727677585c880076a5d9cf5c9f0dbcdb043d053bd4ac40fff3e1de3c60
-unpaired  1       file names     5c97d1b327716400029b7eb796584a7f8bf2fae9686dc11d77b2268a6d455a2c
+➜ memorybox check pairing
+TYPE        COUNT   SIGNATURE    SOURCE
+all         21      b4e8e1a7e6   file names
+datafiles   10      e9070ec758   file names
+metafiles   11      62b4008a61   file names
+unpaired    1       5c97d1b327   file names
 memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
 ```
 
@@ -207,17 +208,17 @@ It is possible to check for corrupted metafiles.
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:50:40Z","from":"devbox"},"source":"stdin"}}
 ➜ printf "junk[" > ~/memorybox/memorybox-meta-b94d27*
 ➜ memorybox check metafiles
-TYPE      COUNT   SOURCE         SIGNATURE
-all       22      file names     951cf1354ec388abb57bedf2587fa9c340a68130ad227b8c3755c7e17f6f29e9
-data      11      file names     0d4a5c74a84eb4cd94b898731c4db5c6c5534b2e6bdac34e4f3f0c727c9853f2
-meta      11      file names     f77510727677585c880076a5d9cf5c9f0dbcdb043d053bd4ac40fff3e1de3c60
-unpaired  0       file names     e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
-memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256: memorybox.source key conflicts with filename
+TYPE        COUNT   SIGNATURE    SOURCE
+all         22      58e6b5c206   file names
+datafiles   11      9bc268d709   file names
+metafiles   11      62b4008a61   file names
+unpaired    0       e3b0c44298   file names
+metafiles   11      f724c99150   file content
+memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256: not json encoded
 ```
 
 It is possible to check for corrupted data files:
 ```sh
-➜ rm ~/memorybox/memorybox-meta-b94d27*
 ➜ printf "hello world" | memorybox put -
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:59:52Z","from":"devbox"},"source":"stdin"}}
 ➜ printf "junk" > ~/memorybox/b94d27*
@@ -229,9 +230,8 @@ meta      11      file names     f77510727677585c880076a5d9cf5c9f0dbcdb043d053bd
 unpaired  0       file names     e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 should be named ef875a1705a5fdac206be996f4dc1f726ea6b68861eb741c37def7277f179e37-sha256, possible data corruption
 ```
-> Note: Depending on the size and location of the store (local vs remote) using
-the "rehash" function can take some time as it requires processing every single
-bit of every single file in the store.
+> Note: This can take some time as it requires reading every single bit of every
+single datafile in the store (to recompute the filename hash).
 
 There is no visual mechanism for viewing what you have stored. It is up to you
 to build something to showcase it. I use this tool to support authoring a media
