@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -86,6 +88,27 @@ func Test_fetch(t *testing.T) {
 			}(),
 			expectedErr: os.ErrNotExist,
 		},
+		"fail on inability to buffer http request to disk": {
+			input: "http://totally.legit.url",
+			sys: func() *sys {
+				sys := new(context.Background())
+				sys.TempDir = path.Join("tmp", "nope", "bad")
+				// Mock every http request to contain our expected bytes.
+				sys.Get = func(url string) (resp *http.Response, err error) {
+					return &http.Response{
+						Status:        "OK",
+						StatusCode:    200,
+						Proto:         "HTTP/1.1",
+						ProtoMajor:    1,
+						ProtoMinor:    1,
+						Body:          ioutil.NopCloser(bytes.NewReader(expectedBytes)),
+						ContentLength: int64(len(expectedBytes)),
+					}, nil
+				}
+				return sys
+			}(),
+			expectedErr: os.ErrNotExist,
+		},
 		"fail on inability to copy data to temp file": {
 			input: "-",
 			sys: func() *sys {
@@ -97,14 +120,38 @@ func Test_fetch(t *testing.T) {
 			}(),
 			expectedErr: os.ErrClosed,
 		},
+		"fail on cancelled context": {
+			sys: func() *sys {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return new(ctx)
+			}(),
+			input:       "http://anything.com",
+			expectedErr: errBadRequest,
+		},
+		"fail on inability to stat file": {
+			sys: func() *sys {
+				sys := new(context.Background())
+				sys.Open = func(_ string) (*os.File, error) {
+					file, err := ioutil.TempFile("", "*")
+					if err != nil {
+						t.Fatalf("test setup: %s", err)
+					}
+					// Deleting the file after this function exits ensures that
+					// the stat call which follows will fail.
+					defer os.Remove(file.Name())
+					return file, err
+				}
+				return sys
+			}(),
+			input:       "path/to/file",
+			expectedErr: os.ErrNotExist,
+		},
 	}
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			file, deleteWhenDone, err := test.sys.fetch(test.input)
-			if deleteWhenDone {
-				defer os.Remove(file.Name())
-			}
+			file, deleteOnClose, err := test.sys.fetch(test.input)
 			if err != nil && test.expectedErr == nil {
 				t.Fatal(err)
 			}
@@ -112,7 +159,12 @@ func Test_fetch(t *testing.T) {
 				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
 			}
 			if err == nil {
-				defer file.Close()
+				if deleteOnClose {
+					defer func() {
+						file.Close()
+						os.Remove(file.Body.(*os.File).Name())
+					}()
+				}
 				actualBytes, readErr := ioutil.ReadAll(file)
 				if readErr != nil {
 					t.Fatal(err)
@@ -123,4 +175,33 @@ func Test_fetch(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_expand(t *testing.T) {
+	_, filename, _, _ := runtime.Caller(0)
+	testDir := filepath.Dir(filename)
+	table := map[string]struct {
+		rootPath          string
+		expectedFileCount int
+	}{
+		"walks inputs which are directories": {
+			rootPath:          testDir,
+			expectedFileCount: 3,
+		},
+		"walks directories recursively": {
+			rootPath:          filepath.Join(testDir, ".."),
+			expectedFileCount: 10,
+		},
+	}
+	for name, test := range table {
+		test := test
+		t.Run(name, func(t *testing.T) {
+			files := new(context.Background()).expand([]string{test.rootPath})
+			// pretty shit test
+			if len(files) != test.expectedFileCount {
+				t.Fatalf("found %d files in %s, expected %d", len(files), test.rootPath, test.expectedFileCount)
+			}
+		})
+	}
+
 }

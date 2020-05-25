@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/tkellen/memorybox/internal/fetch"
-	"io"
+	"github.com/tkellen/memorybox/pkg/file"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -31,82 +31,28 @@ func fixtureServer(t *testing.T, expected []byte) (string, func() error) {
 	return url, server.Close
 }
 
-func TestOne(t *testing.T) {
+func TestFetch(t *testing.T) {
 	expectedBytes := []byte("test")
 	url, shutdownServer := fixtureServer(t, expectedBytes)
 	defer shutdownServer()
+	tempFile, _ := ioutil.TempFile("", "")
+	tempFile.Write(expectedBytes)
+	defer os.Remove(tempFile.Name())
 	table := map[string]struct {
 		context       context.Context
 		input         string
 		expectedErr   error
 		expectedBytes []byte
 	}{
-		"success": {
+		"success from url": {
 			context:       context.Background(),
 			input:         url,
 			expectedBytes: expectedBytes,
 		},
-		"failure on cancelled context": {
-			context: func() context.Context {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel()
-				return ctx
-			}(),
-			input:       url,
-			expectedErr: context.Canceled,
-		},
-		"failure on missing file": {
-			context:     context.Background(),
-			input:       "/nope/nope/nope/nope/nope",
-			expectedErr: os.ErrNotExist,
-		},
-	}
-	for name, test := range table {
-		test := test
-		t.Run(name, func(t *testing.T) {
-			err := fetch.One(test.context, test.input, func(request string, src io.ReadSeeker) error {
-				actualBytes, readErr := ioutil.ReadAll(src)
-				if readErr != nil {
-					t.Fatal(readErr)
-				}
-				if !bytes.Equal(test.expectedBytes, actualBytes) {
-					t.Fatalf("expected bytes %s, got %s", test.expectedBytes, actualBytes)
-				}
-				return nil
-			})
-			if err != nil && test.expectedErr == nil {
-				t.Fatal(err)
-			}
-			if err != nil && test.expectedErr != nil && !errors.Is(err, test.expectedErr) {
-				t.Fatalf("expected error: %s, got %s", test.expectedErr, err)
-			}
-		})
-	}
-}
-
-func TestMany(t *testing.T) {
-	expectedBytes := []byte("test")
-	url, shutdownServer := fixtureServer(t, expectedBytes)
-	defer shutdownServer()
-	table := map[string]struct {
-		context       context.Context
-		input         string
-		expectedErr   error
-		expectedBytes []byte
-	}{
-		"success": {
+		"success from local file": {
 			context:       context.Background(),
-			input:         url,
+			input:         tempFile.Name(),
 			expectedBytes: expectedBytes,
-		},
-		"failure on cancelled context": {
-			context: func() context.Context {
-				ctx, cancel := context.WithCancel(context.Background())
-				cancel()
-				return ctx
-			}(),
-			input:       url,
-			expectedErr: context.Canceled,
 		},
 		"fail on invalid file": {
 			context:     context.Background(),
@@ -117,8 +63,8 @@ func TestMany(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			err := fetch.Many(test.context, []string{test.input, test.input, test.input, test.input}, 2, func(index int, request string, src io.ReadSeeker) error {
-				actualBytes, readErr := ioutil.ReadAll(src)
+			err := fetch.Do(context.Background(), []string{test.input, test.input, test.input, test.input}, 2, func(innerCtx context.Context, index int, src *file.File) error {
+				actualBytes, readErr := ioutil.ReadAll(src.Body)
 				if readErr != nil {
 					t.Fatal(readErr)
 				}

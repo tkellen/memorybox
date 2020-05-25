@@ -1,0 +1,30 @@
+targets:
+  datafile-corrupted:
+    backend: localDisk
+    path: testdata/datafile-corrupted
+  datafile-pair-missing:
+    backend: localDisk
+    path: testdata/datafile-pair-missing
+  default:
+    path: ~/memorybox
+    type: localDisk
+  invalid:
+    backen: whatever
+  metafile-corrupted:
+    backend: localDisk
+    path: testdata/metafile-corrupted
+  metafile-pair-missing:
+    backend: localDisk
+    path: testdata/metafile-pair-missing
+  object:
+    access_key_id: key
+    backend: objectStore
+    bucket: whatever
+    endpoint: s3.amazonaws.com
+    secret_access_key: otherKey
+  valid:
+    backend: localDisk
+    path: testdata/valid
+  valid-alternate:
+    backend: localDisk
+    path: testdata/valid-alternate

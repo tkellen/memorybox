@@ -1,17 +1,7 @@
 // These are unit tests which validate nothing more than how the abstraction of
-// the Store interface maps calls to *minio.Client.
-//
-// I could actually *run* minio during testing. Here is how it is done:
-//
-//   os.Setenv("MINIO_ACCESS_KEY", "access-key")
-//   os.Setenv("MINIO_SECRET_KEY", "secret-key")
-//   cmd.Main([]string{"--address :9001", "server", "/tmp/server"})
-//
-// ...but there is no supported way to wait for it to finish starting up, nor
-// any way to cleanly shut it down.
-//
-// Honestly, the value of spending time writing these tests is, by analogy,
-// equivalent to knitting a hat vs buying one. Whatever. Here we go.
+// the Store interface maps calls to the AWS SDK for S3. Honestly, the value of
+// spending time writing these tests is about the equivalent to knitting a hat
+// vs buying one. Whatever. Here we go.
 package objectstore_test
 
 import (
@@ -19,109 +9,52 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"github.com/minio/minio-go/v6"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/request"
+	"github.com/aws/aws-sdk-go/service/s3"
+	"github.com/aws/aws-sdk-go/service/s3/s3manager"
 	"github.com/tkellen/memorybox/pkg/objectstore"
-	"io"
 	"io/ioutil"
+	"reflect"
 	"testing"
+	"time"
 )
 
 type s3mock struct {
-	putObject    func(context.Context, string, string, io.Reader, int64, minio.PutObjectOptions) (int64, error)
-	getObject    func(context.Context, string, string, minio.GetObjectOptions) (*minio.Object, error)
-	listObjects  func(string, string, bool, <-chan struct{}) <-chan minio.ObjectInfo
-	statObject   func(context.Context, string, string, minio.StatObjectOptions) (minio.ObjectInfo, error)
-	removeObject func(string, string) error
+	getObjectWithContext        func(aws.Context, *s3.GetObjectInput, ...request.Option) (*s3.GetObjectOutput, error)
+	deleteObjectWithContext     func(aws.Context, *s3.DeleteObjectInput, ...request.Option) (*s3.DeleteObjectOutput, error)
+	listObjectsPagesWithContext func(aws.Context, *s3.ListObjectsInput, func(*s3.ListObjectsOutput, bool) bool, ...request.Option) error
+	headObjectWithContext       func(aws.Context, *s3.HeadObjectInput, ...request.Option) (*s3.HeadObjectOutput, error)
 }
 
-func (s3 *s3mock) PutObjectWithContext(ctx context.Context, bucket string, key string, reader io.Reader, size int64, opts minio.PutObjectOptions) (int64, error) {
-	return s3.putObject(ctx, bucket, key, reader, size, opts)
+func (s3 *s3mock) GetObjectWithContext(ctx aws.Context, input *s3.GetObjectInput, opts ...request.Option) (*s3.GetObjectOutput, error) {
+	return s3.getObjectWithContext(ctx, input, opts...)
 }
-func (s3 *s3mock) GetObjectWithContext(ctx context.Context, bucket string, key string, opts minio.GetObjectOptions) (*minio.Object, error) {
-	return s3.getObject(ctx, bucket, key, opts)
+func (s3 *s3mock) HeadObjectWithContext(ctx aws.Context, input *s3.HeadObjectInput, opts ...request.Option) (*s3.HeadObjectOutput, error) {
+	return s3.headObjectWithContext(ctx, input, opts...)
 }
-func (s3 *s3mock) StatObjectWithContext(ctx context.Context, bucket string, key string, opts minio.StatObjectOptions) (minio.ObjectInfo, error) {
-	return s3.statObject(ctx, bucket, key, opts)
+func (s3 *s3mock) ListObjectsPagesWithContext(ctx aws.Context, input *s3.ListObjectsInput, fn func(*s3.ListObjectsOutput, bool) bool, opts ...request.Option) error {
+	return s3.listObjectsPagesWithContext(ctx, input, fn, opts...)
 }
-func (s3 *s3mock) ListObjects(bucket string, prefix string, recursive bool, doneCh <-chan struct{}) <-chan minio.ObjectInfo {
-	return s3.listObjects(bucket, prefix, recursive, doneCh)
-}
-func (s3 *s3mock) RemoveObject(bucket string, key string) error {
-	return s3.removeObject(bucket, key)
+func (s3 *s3mock) DeleteObjectWithContext(ctx aws.Context, input *s3.DeleteObjectInput, opts ...request.Option) (*s3.DeleteObjectOutput, error) {
+	return s3.deleteObjectWithContext(ctx, input, opts...)
 }
 
-func TestNewFromConfig(t *testing.T) {
-	expected := "bucket-name"
-	actual := objectstore.NewFromConfig(map[string]string{
-		"bucket": expected,
-	})
-	if expected != actual.Bucket {
-		t.Fatalf("expected bucket of %s, got %s", expected, actual.Bucket)
-	}
+type s3UploaderMock struct {
+	uploadWithContext func(aws.Context, *s3manager.UploadInput, ...func(*s3manager.Uploader)) (*s3manager.UploadOutput, error)
+}
+
+func (u *s3UploaderMock) UploadWithContext(ctx aws.Context, input *s3manager.UploadInput, opts ...func(*s3manager.Uploader)) (*s3manager.UploadOutput, error) {
+	return u.uploadWithContext(ctx, input, opts...)
 }
 
 func TestStore_String(t *testing.T) {
 	bucket := "test"
-	store := objectstore.New("test", nil)
+	store := &objectstore.Store{Bucket: bucket}
 	actual := store.String()
-	expected := fmt.Sprintf("ObjectStore: %s", bucket)
+	expected := fmt.Sprintf("%s: %s", objectstore.Name, bucket)
 	if expected != actual {
 		t.Fatalf("expected %s, got %s", expected, actual)
-	}
-}
-
-func TestStore_Put_Success(t *testing.T) {
-	called := false
-	expectedBucket := "bucket"
-	expectedReader := bytes.NewReader([]byte("test"))
-	expectedFilename := "test"
-	objectstore.New(expectedBucket, &s3mock{
-		putObject: func(_ context.Context, bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
-			called = true
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedFilename != key {
-				t.Fatalf("expected %s as key, got %s", expectedFilename, key)
-			}
-			if expectedReader != reader {
-				t.Fatalf("expected %v as reader, got %v", expectedReader, reader)
-			}
-			bytes, _ := ioutil.ReadAll(expectedReader)
-			return int64(len(bytes)), nil
-		},
-	}).Put(context.Background(), expectedReader, expectedFilename)
-	if !called {
-		t.Fatalf("expected call did not occur")
-	}
-}
-
-func TestStore_Put_Failure(t *testing.T) {
-	called := false
-	expectedBucket := "bucket"
-	expectedReader := bytes.NewReader([]byte("test"))
-	expectedFilename := "test"
-	expectedError := errors.New("failed")
-	err := objectstore.New(expectedBucket, &s3mock{
-		putObject: func(_ context.Context, bucket string, key string, reader io.Reader, size int64, options minio.PutObjectOptions) (int64, error) {
-			called = true
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedFilename != key {
-				t.Fatalf("expected %s as key, got %s", expectedFilename, key)
-			}
-			if expectedReader != reader {
-				t.Fatalf("expected %v as reader, got %v", expectedReader, reader)
-			}
-			return 0, expectedError
-		},
-	}).Put(context.Background(), expectedReader, expectedFilename)
-	if !called {
-		t.Fatalf("expected call did not occur")
-	}
-	if expectedError != err {
-		t.Fatalf("expected error %s, got %s", expectedError, err)
 	}
 }
 
@@ -129,39 +62,56 @@ func TestStore_Get(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedFilename := "test"
-	objectstore.New(expectedBucket, &s3mock{
-		getObject: func(_ context.Context, bucket string, key string, options minio.GetObjectOptions) (*minio.Object, error) {
-			called = true
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedFilename != key {
-				t.Fatalf("expected %s as key, got %s", expectedFilename, key)
-			}
-			return &minio.Object{}, nil
+	expectedContent := []byte("test")
+	store := &objectstore.Store{
+		Bucket: expectedBucket,
+		S3: &s3mock{
+			getObjectWithContext: func(ctx aws.Context, input *s3.GetObjectInput, opts ...request.Option) (*s3.GetObjectOutput, error) {
+				called = true
+				if expectedBucket != *input.Bucket {
+					t.Fatalf("expected %s as bucket, got %s", expectedBucket, *input.Bucket)
+				}
+				if expectedFilename != *input.Key {
+					t.Fatalf("expected %s as key, got %s", expectedFilename, *input.Key)
+				}
+				return &s3.GetObjectOutput{
+					ContentLength: aws.Int64(int64(len(expectedContent))),
+					LastModified:  aws.Time(time.Now()),
+					Body:          ioutil.NopCloser(bytes.NewReader(expectedContent)),
+					Metadata:      map[string]*string{},
+				}, nil
+			},
 		},
-	}).Get(context.Background(), expectedFilename)
+	}
+	store.Get(context.Background(), expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
 }
 
-func TestStore_Exists(t *testing.T) {
+func TestStore_Stat(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedFilename := "test"
-	objectstore.New(expectedBucket, &s3mock{
-		statObject: func(_ context.Context, bucket string, key string, options minio.StatObjectOptions) (minio.ObjectInfo, error) {
-			called = true
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedFilename != key {
-				t.Fatalf("expected %s as key, got %s", expectedFilename, key)
-			}
-			return minio.ObjectInfo{}, nil
+	store := &objectstore.Store{
+		Bucket: expectedBucket,
+		S3: &s3mock{
+			headObjectWithContext: func(ctx aws.Context, input *s3.HeadObjectInput, opts ...request.Option) (*s3.HeadObjectOutput, error) {
+				called = true
+				if expectedBucket != *input.Bucket {
+					t.Fatalf("expected %s as bucket, got %s", expectedBucket, *input.Bucket)
+				}
+				if expectedFilename != *input.Key {
+					t.Fatalf("expected %s as key, got %s", expectedFilename, *input.Key)
+				}
+				return &s3.HeadObjectOutput{
+					ContentLength: aws.Int64(0),
+					LastModified:  aws.Time(time.Time{}),
+				}, nil
+			},
 		},
-	}).Exists(context.Background(), expectedFilename)
+	}
+	store.Stat(context.Background(), expectedFilename)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -171,23 +121,28 @@ func TestStore_Search(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedPrefix := "test"
-	objectstore.New(expectedBucket, &s3mock{
-		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
-			called = true
-			results := make(chan minio.ObjectInfo)
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedPrefix != prefix {
-				t.Fatalf("expected %s as key, got %s", expectedPrefix, prefix)
-			}
-			go func() {
-				results <- minio.ObjectInfo{}
-				close(results)
-			}()
-			return results
+	store := &objectstore.Store{
+		Bucket: expectedBucket,
+		S3: &s3mock{
+			listObjectsPagesWithContext: func(ctx aws.Context, input *s3.ListObjectsInput, fn func(*s3.ListObjectsOutput, bool) bool, opts ...request.Option) error {
+				called = true
+				if expectedBucket != *input.Bucket {
+					t.Fatalf("expected %s as bucket, got %s", expectedBucket, *input.Bucket)
+				}
+				if expectedPrefix != *input.Prefix {
+					t.Fatalf("expected %s as key, got %s", expectedPrefix, *input.Prefix)
+				}
+				// this is pretty worthless as a test
+				fn(&s3.ListObjectsOutput{Contents: []*s3.Object{
+					{Key: aws.String("foo"), LastModified: &time.Time{}, Size: aws.Int64(3)},
+					{Key: aws.String("bar"), LastModified: &time.Time{}, Size: aws.Int64(3)},
+					{Key: aws.String("baz"), LastModified: &time.Time{}, Size: aws.Int64(3)},
+				}}, true)
+				return nil
+			},
 		},
-	}).Search(context.Background(), expectedPrefix)
+	}
+	store.Search(context.Background(), expectedPrefix)
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
@@ -197,54 +152,24 @@ func TestStore_Delete(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedKey := "key"
-	objectstore.New(expectedBucket, &s3mock{
-		removeObject: func(bucket string, key string) error {
-			called = true
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedKey != key {
-				t.Fatalf("expected %s as key, got %s", expectedKey, key)
-			}
-			return nil
+	store := &objectstore.Store{
+		Bucket: expectedBucket,
+		S3: &s3mock{
+			deleteObjectWithContext: func(ctx aws.Context, input *s3.DeleteObjectInput, opts ...request.Option) (*s3.DeleteObjectOutput, error) {
+				called = true
+				if expectedBucket != *input.Bucket {
+					t.Fatalf("expected %s as bucket, got %s", expectedBucket, *input.Bucket)
+				}
+				if expectedKey != *input.Key {
+					t.Fatalf("expected %s as key, got %s", expectedKey, *input.Key)
+				}
+				return &s3.DeleteObjectOutput{}, nil
+			},
 		},
-	}).Delete(context.Background(), expectedKey)
+	}
+	store.Delete(context.Background(), expectedKey)
 	if !called {
 		t.Fatalf("expected call did not occur")
-	}
-}
-
-func TestStore_SearchContextCancel(t *testing.T) {
-	called := false
-	expectedBucket := "bucket"
-	expectedPrefix := "test"
-	ctx, cancel := context.WithCancel(context.Background())
-	cancel()
-	_, err := objectstore.New(expectedBucket, &s3mock{
-		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
-			called = true
-			results := make(chan minio.ObjectInfo)
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedPrefix != prefix {
-				t.Fatalf("expected %s as key, got %s", expectedPrefix, prefix)
-			}
-			go func() {
-				results <- minio.ObjectInfo{}
-				close(results)
-			}()
-			return results
-		},
-	}).Search(ctx, expectedPrefix)
-	if !called {
-		t.Fatalf("expected call did not occur")
-	}
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !errors.Is(err, ctx.Err()) {
-		t.Fatalf("expected error %s, got %s", ctx.Err(), err)
 	}
 }
 
@@ -252,33 +177,106 @@ func TestStore_SearchError(t *testing.T) {
 	called := false
 	expectedBucket := "bucket"
 	expectedPrefix := "test"
-	expectedError := errors.New("object error")
-	_, err := objectstore.New(expectedBucket, &s3mock{
-		listObjects: func(bucket string, prefix string, recursive bool, done <-chan struct{}) <-chan minio.ObjectInfo {
-			called = true
-			results := make(chan minio.ObjectInfo)
-			if expectedBucket != bucket {
-				t.Fatalf("expected %s as bucket, got %s", expectedBucket, bucket)
-			}
-			if expectedPrefix != prefix {
-				t.Fatalf("expected %s as key, got %s", expectedPrefix, prefix)
-			}
-			go func() {
-				results <- minio.ObjectInfo{
-					Err: expectedError,
+	store := &objectstore.Store{
+		Bucket: expectedBucket,
+		S3: &s3mock{
+			listObjectsPagesWithContext: func(ctx aws.Context, input *s3.ListObjectsInput, fn func(*s3.ListObjectsOutput, bool) bool, opts ...request.Option) error {
+				called = true
+				if expectedBucket != *input.Bucket {
+					t.Fatalf("expected %s as bucket, got %s", expectedBucket, *input.Bucket)
 				}
-				close(results)
-			}()
-			return results
+				if expectedPrefix != *input.Prefix {
+					t.Fatalf("expected %s as key, got %s", expectedPrefix, *input.Prefix)
+				}
+				return nil
+			},
 		},
-	}).Search(context.Background(), expectedPrefix)
+	}
+	store.Search(context.Background(), expectedPrefix)
+	if !called {
+		t.Fatal("expected call did not occur")
+	}
+}
+
+func TestStore_Put_Failure(t *testing.T) {
+	called := false
+	expectedBucket := "bucket"
+	expectedReader := bytes.NewReader([]byte("test"))
+	expectedFilename := "test"
+	expectedError := errors.New("failed")
+	store := &objectstore.Store{
+		Bucket: expectedBucket,
+		Uploader: &s3UploaderMock{
+			uploadWithContext: func(_ aws.Context, input *s3manager.UploadInput, opts ...func(*s3manager.Uploader)) (*s3manager.UploadOutput, error) {
+				called = true
+				if expectedBucket != *input.Bucket {
+					t.Fatalf("expected %s as bucket, got %s", expectedBucket, *input.Bucket)
+				}
+				if expectedFilename != *input.Key {
+					t.Fatalf("expected %s as key, got %s", expectedFilename, *input.Key)
+				}
+				if expectedReader != input.Body {
+					t.Fatalf("expected %v as reader, got %v", expectedReader, input.Body)
+				}
+				return nil, expectedError
+			},
+		},
+	}
+	err := store.Put(context.Background(), expectedReader, expectedFilename, time.Now())
 	if !called {
 		t.Fatalf("expected call did not occur")
 	}
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !errors.Is(err, expectedError) {
+	if expectedError != err {
 		t.Fatalf("expected error %s, got %s", expectedError, err)
+	}
+}
+
+func TestStore_Concat(t *testing.T) {
+	expected := [][]byte{[]byte("foo"), []byte("bar")}
+	var input []string
+	backend := map[string][]byte{}
+	for _, content := range expected {
+		backend[string(content)] = content
+		input = append(input, string(content))
+	}
+	store := &objectstore.Store{
+		Bucket: "test",
+		S3: &s3mock{
+			getObjectWithContext: func(_ aws.Context, input *s3.GetObjectInput, _ ...request.Option) (*s3.GetObjectOutput, error) {
+				return &s3.GetObjectOutput{
+					ContentLength: aws.Int64(int64(len(backend[*input.Key]))),
+					LastModified:  aws.Time(time.Now()),
+					Body:          ioutil.NopCloser(bytes.NewReader(backend[*input.Key])),
+					Metadata: map[string]*string{
+						"memorybox.LastModified": aws.String(time.Now().UTC().Format(time.RFC3339)),
+					},
+				}, nil
+			},
+		},
+	}
+	actual, err := store.Concat(context.Background(), 1, input)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(expected, actual) {
+		t.Fatalf("expected %s, got %s", expected, actual)
+	}
+}
+
+func TestStore_ConcatFail(t *testing.T) {
+	expectedErr := errors.New("bad time")
+	store := &objectstore.Store{
+		Bucket: "test",
+		S3: &s3mock{
+			getObjectWithContext: func(ctx aws.Context, _ *s3.GetObjectInput, _ ...request.Option) (*s3.GetObjectOutput, error) {
+				return nil, ctx.Err()
+			},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	_, err := store.Concat(ctx, 2, []string{"foo", "bar", "baz"})
+	if err == expectedErr {
+		t.Fatalf("expected error %s, got %s", err, expectedErr)
 	}
 }

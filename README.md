@@ -19,15 +19,15 @@ files, and enough storage space to hold the things you've created. That's it.
 First, "put" some data under the management of memorybox.
 ```sh
 ➜ printf "hello world" | memorybox put -
-{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","source":"-","size":11,"importedAt":"2020-05-11T00:37:20Z"}}
+{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:43:49Z","from":"devbox"},"source":"stdin"}}
 
 ➜ memorybox put https://scaleout.team/logo.svg
-{"memorybox":{"file":"b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256","source":"https://scaleout.team/logo.svg","size":6102,"importedAt":"2020-05-11T00:37:39Z"}}
+{"memorybox":{"file":"b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256","import":{"at":"2020-05-23T23:43:59Z","from":"devbox"},"source":"https://scaleout.team/logo.svg"}}
 
 ➜ memorybox put *.go
-{"memorybox":{"file":"737bc0bc21c2a00e6461d25171ce4926bccabaa9bf9c6979ee13450528745796-sha256","source":"main.go","size":319,"importedAt":"2020-05-11T00:37:50Z"}}
-{"memorybox":{"file":"234051289da8aca877faf9452c9bdafeb109f0b2b1229a6275d8dcb7e2a1e48d-sha256","source":"cli_test.go","size":4750,"importedAt":"2020-05-11T00:37:50Z"}}
-{"memorybox":{"file":"59966fd82f22cc72d5defb65ed285cc1e7e0f7d881ce1b2befcf918deebd1769-sha256","source":"cli.go","size":6663,"importedAt":"2020-05-11T00:37:50Z"}}
+{"memorybox":{"file":"c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"cli.go"}}
+{"memorybox":{"file":"d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"main.go"}}
+{"memorybox":{"file":"400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"cli_test.go"}}
 ```
 
 No matter where the data comes from, your imported files will end up in single
@@ -37,11 +37,11 @@ multiple "target" stores. A new file name is computed for each file imported. No
 matter how many files you import, the computed names will never conflict.
 ```sh
 ➜ find ~/memorybox -type f | sort | grep -v meta
-/home/tkellen/memorybox/234051289da8aca877faf9452c9bdafeb109f0b2b1229a6275d8dcb7e2a1e48d-sha256
-/home/tkellen/memorybox/59966fd82f22cc72d5defb65ed285cc1e7e0f7d881ce1b2befcf918deebd1769-sha256
-/home/tkellen/memorybox/737bc0bc21c2a00e6461d25171ce4926bccabaa9bf9c6979ee13450528745796-sha256
+/home/tkellen/memorybox/400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256
 /home/tkellen/memorybox/b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256
 /home/tkellen/memorybox/b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+/home/tkellen/memorybox/c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256
+/home/tkellen/memorybox/d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
 ```
 > Note: Names are deterministic. The same data will always generate the same
 file name.
@@ -50,7 +50,7 @@ Want to import files and annotate them with data at the same time? No problem.
 Produce file where the first column on each line is the source file and the
 second column is arbitrary json data. For example:
 ```
-➜ cat <<EOF | memorybox import -
+➜ cat <<EOF | memorybox import travel -
 https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg {"flickr":{"id":"5152985571"},"name":"Nun Near Bayon in Angkor Thom"}
 https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg {"flickr":{"id":"4997667491"},"name":"Tyler Shoveling Away Sand"}
 https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg {"flickr":{"id":"4997795158"},"name":"Mongolian & Horse"}
@@ -59,12 +59,12 @@ https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg {"flickr":{"id":"
 https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg {"flickr":{"id":"4664252420"},"name":"Our Bikes in a German Forest"}
 EOF
 queued: 6, duplicates removed: 0, existing removed: 0
-{"flickr":{"id":"4997795158"},"name":"Mongolian & Horse","memorybox":{"file":"635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256","source":"https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg","size":759776,"importedAt":"2020-05-11T00:38:20Z"}}
-{"flickr":{"id":"4997667491"},"name":"Tyler Shoveling Away Sand","memorybox":{"file":"661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256","source":"https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg","size":2548669,"importedAt":"2020-05-11T00:38:20Z"}}
-{"flickr":{"id":"4439797619"},"name":"Tara","memorybox":{"file":"9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256","source":"https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg","size":1967485,"importedAt":"2020-05-11T00:38:20Z"}}
-{"flickr":{"id":"4664252420"},"name":"Our Bikes in a German Forest","memorybox":{"file":"43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256","source":"https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg","size":5382113,"importedAt":"2020-05-11T00:38:20Z"}}
-{"name":"Vietnamese Pot-bellied Piggies","flickr":{"id":"5345981532"},"memorybox":{"file":"2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256","source":"https://live.staticflickr.com/5044/5345981532_0ec5bbff9f_o.jpg","size":3720775,"importedAt":"2020-05-11T00:38:21Z"}}
-{"name":"Nun Near Bayon in Angkor Thom","flickr":{"id":"5152985571"},"memorybox":{"file":"160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256","source":"https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg","size":4960170,"importedAt":"2020-05-11T00:38:23Z"}}
+https://live.staticflickr.com/4128/4997795158_733eb79733_o.jpg -> 635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256
+https://live.staticflickr.com/4016/4439797619_bccc764fe8_o.jpg -> 9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256
+https://live.staticflickr.com/4132/4997667491_794d24a3d5_o.jpg -> 661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256
+https://live.staticflickr.com/4018/5152985571_1f6631bca8_o.jpg -> 160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
+https://live.staticflickr.com/5044/5345981532_0ec5bbff9f_o.jpg -> 2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256
+https://live.staticflickr.com/4034/4664252420_6172670bf6_o.jpg -> 43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256
 ```
 > Note: By default, importing will keep ten transfers running at the same time.
 You can tweak this to match the quantity your computer and network can support
@@ -73,55 +73,58 @@ as you like and the import functionality will always pick up where you left off.
 
 So, how do you find your files? This tool assumes the quantity of data being
 dealt with is large enough that the only meaningful way to curate it is
-programatically. In order to support this, a json "meta file" is created sibling
-to every imported "data file".
+programatically. In order to support this, a json "metafile" is created sibling
+to every imported "datafile".
 ```sh
 ➜ find ~/memorybox -type f | sort
 /home/tkellen/memorybox/160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
-/home/tkellen/memorybox/234051289da8aca877faf9452c9bdafeb109f0b2b1229a6275d8dcb7e2a1e48d-sha256
 /home/tkellen/memorybox/2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256
+/home/tkellen/memorybox/400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256
 /home/tkellen/memorybox/43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256
-/home/tkellen/memorybox/59966fd82f22cc72d5defb65ed285cc1e7e0f7d881ce1b2befcf918deebd1769-sha256
 /home/tkellen/memorybox/635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256
 /home/tkellen/memorybox/661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256
-/home/tkellen/memorybox/737bc0bc21c2a00e6461d25171ce4926bccabaa9bf9c6979ee13450528745796-sha256
 /home/tkellen/memorybox/9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256
 /home/tkellen/memorybox/b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256
 /home/tkellen/memorybox/b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+/home/tkellen/memorybox/c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256
+/home/tkellen/memorybox/d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
 /home/tkellen/memorybox/memorybox-meta-160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
-/home/tkellen/memorybox/memorybox-meta-234051289da8aca877faf9452c9bdafeb109f0b2b1229a6275d8dcb7e2a1e48d-sha256
 /home/tkellen/memorybox/memorybox-meta-2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256
+/home/tkellen/memorybox/memorybox-meta-400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256
 /home/tkellen/memorybox/memorybox-meta-43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256
-/home/tkellen/memorybox/memorybox-meta-59966fd82f22cc72d5defb65ed285cc1e7e0f7d881ce1b2befcf918deebd1769-sha256
 /home/tkellen/memorybox/memorybox-meta-635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256
 /home/tkellen/memorybox/memorybox-meta-661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256
-/home/tkellen/memorybox/memorybox-meta-737bc0bc21c2a00e6461d25171ce4926bccabaa9bf9c6979ee13450528745796-sha256
 /home/tkellen/memorybox/memorybox-meta-9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256
 /home/tkellen/memorybox/memorybox-meta-b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256
 /home/tkellen/memorybox/memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+/home/tkellen/memorybox/memorybox-meta-c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256
+/home/tkellen/memorybox/memorybox-meta-d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
 ```
 
-Initially, meta files hold minimal data about your imported files. Where they
-came from. How big they are. That sort of thing. Users are expected to annotate
-their files with data that makes them consumable by other systems (e.g. static
-site generators).
+Initially, metafiles hold minimal data about your imported files. It is expected
+that you will annotate them more fully to make them consumable by other systems
+(e.g. static site generators).
 ```sh
 ➜ memorybox meta b94d27 | jq
 {
   "memorybox": {
     "file": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256",
-    "source": "-",
-    "size": 11,
-    "importedAt": "2020-05-11T00:37:20Z"
+    "import": {
+      "at": "2020-05-23T23:43:49Z",
+      "from": "devbox"
+    },
+    "source": "stdin"
   }
 }
 ➜ memorybox meta b94d27 set demo value | jq
 {
   "memorybox": {
     "file": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256",
-    "source": "-",
-    "size": 11,
-    "importedAt": "2020-05-11T00:37:20Z"
+    "import": {
+      "at": "2020-05-23T23:43:49Z",
+      "from": "devbox"
+    },
+    "source": "stdin"
   },
   "demo": "value"
 }
@@ -129,9 +132,11 @@ site generators).
 {
   "memorybox": {
     "file": "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256",
-    "source": "-",
-    "size": 11,
-    "importedAt": "2020-05-11T00:37:20Z"
+    "import": {
+      "at": "2020-05-23T23:43:49Z",
+      "from": "devbox"
+    },
+    "source": "stdin"
   }
 }
 ```
@@ -155,59 +160,78 @@ All meta files can be viewed by generating an index.
 Any tool that supports JSON can filter the index.
 ```sh
 ➜ memorybox index | jq -c 'select(.memorybox.source | endswith("go"))'
-{"memorybox":{"file":"59966fd82f22cc72d5defb65ed285cc1e7e0f7d881ce1b2befcf918deebd1769-sha256","source":"cli.go","size":6663,"importedAt":"2020-05-11T00:37:50Z"}}
-{"memorybox":{"file":"234051289da8aca877faf9452c9bdafeb109f0b2b1229a6275d8dcb7e2a1e48d-sha256","source":"cli_test.go","size":4750,"importedAt":"2020-05-11T00:37:50Z"}}
-{"memorybox":{"file":"737bc0bc21c2a00e6461d25171ce4926bccabaa9bf9c6979ee13450528745796-sha256","source":"main.go","size":319,"importedAt":"2020-05-11T00:37:50Z"}}
+{"memorybox":{"file":"400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"cli_test.go"}}
+{"memorybox":{"file":"c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"cli.go"}}
+{"memorybox":{"file":"d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"main.go"}}
 ```
-
-Generating the index detects missing meta files.
-```sh
-➜ printf "hello world" | memorybox put -
-{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","source":"-","size":11,"importedAt":"2020-05-06T21:48:10Z"}}
-➜ rm ~/memorybox/memorybox-meta-b94d27*
-➜ memorybox index
-store corrupted: datafile b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing metafile memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
-```
-
-Generating the index detects missing data files.
-```sh
-➜ printf "hello world" | memorybox put -
-{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","source":"-","size":11,"importedAt":"2020-05-06T21:48:10Z"}}
-➜ rm ~/memorybox/b94d27*
-➜ memorybox index
-store corrupted: metafile memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing datafile b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
-```
-
-Generating the index detects corrupted meta files.
-```sh
-➜ printf "hello world" | memorybox put -
-{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","source":"-","size":11,"importedAt":"2020-05-06T21:48:10Z"}}
-➜ printf "junk" > ~/memorybox/memorybox-meta-b94d27*
-➜ memorybox index
-store corrupted: memorybox.file key in memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 conflicts with filename
-```
-
-Generating the index can detect corrupted data files (if you ask it to).
-```sh
-➜ rm ~/memorybox/memorybox-meta-b94d27*
-➜ printf "hello world" | memorybox put -
-{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","source":"-","size":11,"importedAt":"2020-05-06T21:48:10Z"}}
-➜ printf "junk" > ~/memorybox/b94d27*
-➜ memorybox index rehash
-store corrupted: b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 should be named ef875a1705a5fdac206be996f4dc1f726ea6b68861eb741c37def7277f179e37-sha256, possible data corruption
-```
-> Note: Depending on the size and location of the store (local vs remote) using
-the "rehash" function can take some time as it requires processing every single
-bit of every single file in the store.
 
 You can also modify any subset of the index and re-import it, updating as many
 meta files as you like with a single command.
 ```sh
 ➜ memorybox index | jq -c 'select(.memorybox.source | endswith("go")) + {"demo":"key"}' | memorybox index update -
-{"memorybox":{"file":"59966fd82f22cc72d5defb65ed285cc1e7e0f7d881ce1b2befcf918deebd1769-sha256","source":"cli.go","size":6663,"importedAt":"2020-05-11T01:00:17Z"},"demo":"key"}
-{"memorybox":{"file":"595320f2cf82f166b4b0b7303d56d65b826488b3b4d2bd09a87f6ff20cdb6fe6-sha256","source":"main.go","size":320,"importedAt":"2020-05-11T01:00:17Z"},"demo":"key"}
-{"memorybox":{"file":"234051289da8aca877faf9452c9bdafeb109f0b2b1229a6275d8dcb7e2a1e48d-sha256","source":"cli_test.go","size":4750,"importedAt":"2020-05-11T01:00:17Z"},"demo":"key"}
+{"memorybox":{"file":"d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"main.go"},"demo":"key"}
+{"memorybox":{"file":"400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"cli_test.go"},"demo":"key"}
+{"memorybox":{"file":"c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256","import":{"at":"2020-05-23T23:44:11Z","from":"devbox"},"source":"cli.go"},"demo":"key"}
 ```
+
+It is possible to check for missing metafiles:
+```sh
+➜ printf "hello world" | memorybox put -
+{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:47:58Z","from":"devbox"},"source":"stdin"}}
+➜ rm ~/memorybox/memorybox-meta-b94d27*
+➜ memorybox check pairing
+TYPE      COUNT   SOURCE         SIGNATURE
+all       21      file names     79d2debf188bea2645f36bae5ba5a86029712995c7e3a50a86c486b9f3f68b46
+data      11      file names     0d4a5c74a84eb4cd94b898731c4db5c6c5534b2e6bdac34e4f3f0c727c9853f2
+meta      10      file names     6c1880ba7b22f2ea0e5fdcfd170258055380c2b14ee6a66afb3aa8c9ee3ea21c
+unpaired  1       file names     4544b50389f946f441cb7e3c107389c5f6d0f07344e748124b4541f55fc17684
+b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+```
+
+It is possible to check for missing datafiles:
+```sh
+➜ printf "hello world" | memorybox put -
+{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:49:33Z","from":"devbox"},"source":"stdin"}}
+➜ rm ~/memorybox/b94d27*
+TYPE      COUNT   SOURCE         SIGNATURE
+all       21      file names     9b6a5502efe09728b308c0a5d0ac3f4067a4e8a31de5ca5a4a25541692e8411f
+data      10      file names     f5fe46c8fbdd5a3d719f93152a7a787008f5b3084ef281387eff717b8d24d01e
+meta      11      file names     f77510727677585c880076a5d9cf5c9f0dbcdb043d053bd4ac40fff3e1de3c60
+unpaired  1       file names     5c97d1b327716400029b7eb796584a7f8bf2fae9686dc11d77b2268a6d455a2c
+memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+```
+
+It is possible to check for corrupted metafiles.
+```sh
+➜ printf "hello world" | memorybox put -
+{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:50:40Z","from":"devbox"},"source":"stdin"}}
+➜ printf "junk[" > ~/memorybox/memorybox-meta-b94d27*
+➜ memorybox check metafiles
+TYPE      COUNT   SOURCE         SIGNATURE
+all       22      file names     951cf1354ec388abb57bedf2587fa9c340a68130ad227b8c3755c7e17f6f29e9
+data      11      file names     0d4a5c74a84eb4cd94b898731c4db5c6c5534b2e6bdac34e4f3f0c727c9853f2
+meta      11      file names     f77510727677585c880076a5d9cf5c9f0dbcdb043d053bd4ac40fff3e1de3c60
+unpaired  0       file names     e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256: memorybox.source key conflicts with filename
+```
+
+It is possible to check for corrupted data files:
+```sh
+➜ rm ~/memorybox/memorybox-meta-b94d27*
+➜ printf "hello world" | memorybox put -
+{"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:59:52Z","from":"devbox"},"source":"stdin"}}
+➜ printf "junk" > ~/memorybox/b94d27*
+➜ memorybox check datafiles
+TYPE      COUNT   SOURCE         SIGNATURE
+all       22      file names     951cf1354ec388abb57bedf2587fa9c340a68130ad227b8c3755c7e17f6f29e9
+data      11      file names     0d4a5c74a84eb4cd94b898731c4db5c6c5534b2e6bdac34e4f3f0c727c9853f2
+meta      11      file names     f77510727677585c880076a5d9cf5c9f0dbcdb043d053bd4ac40fff3e1de3c60
+unpaired  0       file names     e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
+b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 should be named ef875a1705a5fdac206be996f4dc1f726ea6b68861eb741c37def7277f179e37-sha256, possible data corruption
+```
+> Note: Depending on the size and location of the store (local vs remote) using
+the "rehash" function can take some time as it requires processing every single
+bit of every single file in the store.
 
 There is no visual mechanism for viewing what you have stored. It is up to you
 to build something to showcase it. I use this tool to support authoring a media
@@ -217,13 +241,11 @@ heavy website that can be distributed via a USB thumb drive.
 ```
 targets:
   aws:
-    type: s3
-    access_key_id: ...
-    secret_access_key: ...
+    type: objectStore
+    profile: profileName
     bucket: [bucket-name]
-    endpoint: s3.amazonaws.com
   digitalocean:
-    type: s3
+    type: objectStore
     access_key_id: ...
     secret_access_key: ...
     bucket: [spaces-name]

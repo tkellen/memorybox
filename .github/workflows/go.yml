@@ -22,7 +22,7 @@ jobs:
     - name: build and test
       run: |
         go build -v .
-        go test -v $(go list ./... | grep -v hack) -coverprofile=profile.cov
+        go test -v $(go list ./... | grep -v hack | grep -v test) -coverprofile=profile.cov
       env:
         CGO_ENABLED: 0
     - name: push code coverage to coveralls.io

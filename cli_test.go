@@ -3,22 +3,13 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"github.com/tkellen/memorybox/pkg/archive"
+	"github.com/tkellen/memorybox/pkg/file"
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
-
-type testFiles struct {
-	storePath           string
-	configPath          string
-	configFileHash      string
-	goodImportFile      string
-	goodIndexUpdateFile string
-	badImportFile       string
-	badIndexUpdateFile  string
-}
 
 func tempFile(t *testing.T, content string) string {
 	tempFile, tempFileErr := ioutil.TempFile("", "*")
@@ -33,6 +24,14 @@ func tempFile(t *testing.T, content string) string {
 	return tempFile.Name()
 }
 
+type testFiles struct {
+	storePath           string
+	configPath          string
+	configFileHash      string
+	goodIndexUpdateFile string
+	badIndexUpdateFile  string
+}
+
 func testSetup(t *testing.T) testFiles {
 	storePath, storePathErr := ioutil.TempDir("", "*")
 	if storePathErr != nil {
@@ -40,19 +39,18 @@ func testSetup(t *testing.T) testFiles {
 	}
 	config := fmt.Sprintf(`targets:
   test:
-    type: localDisk
-    path: %s
-  invalid:
-    type: whatever`, storePath)
-	hash, _, _ := archive.Sha256(bytes.NewBuffer([]byte(config)))
+    backend: localDisk
+    path: %[1]s
+  alternate:
+    backend: localDisk
+    path: %[1]s`, filepath.Join(storePath, "first"), filepath.Join(storePath, "second"))
+	hash, _, _ := file.Sha256(bytes.NewBuffer([]byte(config)))
 	configFile := tempFile(t, config)
 	return testFiles{
 		storePath:           storePath,
 		configPath:          configFile,
 		configFileHash:      hash,
-		goodImportFile:      tempFile(t, fmt.Sprintf("%s {\"test\":\"meta\"}\n", configFile)),
 		goodIndexUpdateFile: tempFile(t, fmt.Sprintf("{\"memorybox\":{\"file\":\"%[1]s\"}}\n{\"memorybox\":{\"file\":\"%[1]s\"}}\n", hash)),
-		badImportFile:       tempFile(t, "239487621384792,,,\n\n12312346asfkjJASKF*231 \n "),
 		badIndexUpdateFile:  tempFile(t, fmt.Sprintf("{\"memorybox\":{\"file\":\"%[1]s\"}}\n{\"memorybox\":{\"file\":\"missing\"}\n{\"memorybox\":{}}\n", hash)),
 	}
 }
@@ -60,37 +58,50 @@ func testSetup(t *testing.T) testFiles {
 func TestRunner(t *testing.T) {
 	table := map[int][]string{
 		0: {
-			"-c {{configPath}} -d version",
-			"-c {{configPath}} -t test version",
-			"-c {{configPath}} -t test hash {{tempFile}}",
-			"-c {{configPath}} -t test put {{tempFile}}",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test get {{hash}}",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test meta {{hash}}",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test meta {{hash}} set key value",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test meta {{hash}} delete key value",
-			"-c {{configPath}} -t test index",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test index rehash",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test index update {{goodIndexUpdateFile}}",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test delete {{hash}}",
-			"-c {{configPath}} -t test import {{goodImportFile}}",
+			"-d -c {{configPath}} -t test hash {{tempFile}}",
+			"-d -c {{configPath}} -t test version",
+			"-d -c {{configPath}} -t test put {{tempFile}}",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test get {{hash}}",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test meta {{hash}}",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test meta {{hash}} set key value",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test meta {{hash}} delete key value",
+			"-d -c {{configPath}} -t test index",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test index update {{goodIndexUpdateFile}}",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test delete {{hash}}",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} sync metafiles test alternate",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} sync datafiles test alternate",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} sync all test alternate",
+			"-d -c {{configPath}} -t test import test testdata/good-import-file",
+			"-d -c testdata/config -t valid check pairing",
+			"-d -c testdata/config -t valid check metafiles",
+			"-d -c testdata/config -t valid check datafiles",
+			"-d -c testdata/config diff valid valid",
+			"-d -c {{configPath}} lambda create",
+			"-d -c {{configPath}} lambda delete",
 		},
 		1: {
 			"",
-			"-c {{configPath}} help",
-			"-c {{configPath}} -badflag",
-			"-c {{configPath}} -t missingTarget index",
-			"-c {{configPath}} -t invalid index",
-			"-c {{configPath}} -t test unknown",
-			"-c {{configPath}} -t test put",
-			"-c {{configPath}} -t test get",
-			"-c {{configPath}} -t test meta",
-			"-c {{configPath}} -t test put missing",
-			"-c {{configPath}} -t test get missing",
-			"-c {{configPath}} -t test delete missing",
-			"-c {{configPath}} -t test meta missing",
-			"-c /root/cant/write/here/path version",
-			"-c {{configPath}} -t test put {{tempFile}} && -c {{configPath}} -t test index update {{badIndexUpdateFile}}",
-			"-c {{configPath}} -t test import {{badImportFile}}",
+			"-d -c testdata/config help",
+			"-d -c testdata/config -badflag",
+			"-d -c testdata/config -t missingTarget index",
+			"-d -c testdata/config -t invalid index",
+			"-d -c testdata/config -t valid unknown",
+			"-d -c testdata/config -t valid put",
+			"-d -c testdata/config -t valid get",
+			"-d -c testdata/config -t valid meta",
+			"-d -c testdata/config -t valid put missing",
+			"-d -c testdata/config -t valid get missing",
+			"-d -c testdata/config -t valid delete missing",
+			"-d -c testdata/config -t valid meta missing",
+			"-d -c /root/cant/write/here/path version",
+			"-d -c {{configPath}} -t test put {{tempFile}} && -d -c {{configPath}} -t test index update {{badIndexUpdateFile}}",
+			"-d -c testdata/config -t object index",
+			"-d -c testdata/config -t valid import test testdata/bad-import-file",
+			"-d -c testdata/config -t datafile-pair-missing check pairing",
+			"-d -c testdata/config -t valid check pairing",
+			"-d -c testdata/config -t datafile-corrupted check datafiles",
+			"-d -c testdata/config -t metafile-corrupted check metafiles",
+			"-d -c testdata/config diff valid valid-alternate",
 		},
 	}
 	for expectedCode, commands := range table {
@@ -101,23 +112,19 @@ func TestRunner(t *testing.T) {
 				files := testSetup(t)
 				defer os.RemoveAll(files.storePath)
 				defer os.Remove(files.configPath)
-				defer os.Remove(files.goodImportFile)
 				defer os.Remove(files.goodIndexUpdateFile)
-				defer os.Remove(files.badImportFile)
 				defer os.Remove(files.badIndexUpdateFile)
 				commands := strings.Split(command, " && ")
 				for index, cmd := range commands {
 					cmd = strings.Replace(cmd, "{{configPath}}", files.configPath, -1)
 					cmd = strings.Replace(cmd, "{{tempFile}}", files.configPath, -1)
 					cmd = strings.Replace(cmd, "{{hash}}", files.configFileHash, -1)
-					cmd = strings.Replace(cmd, "{{goodImportFile}}", files.goodImportFile, -1)
 					cmd = strings.Replace(cmd, "{{goodIndexUpdateFile}}", files.goodIndexUpdateFile, -1)
-					cmd = strings.Replace(cmd, "{{badImportFile}}", files.badImportFile, -1)
 					cmd = strings.Replace(cmd, "{{badIndexUpdateFile}}", files.badIndexUpdateFile, -1)
 					cmd = "memorybox " + cmd
 					stdout := bytes.NewBuffer([]byte{})
 					stderr := bytes.NewBuffer([]byte{})
-					actualCode := Run(strings.Fields(cmd), stderr, stdout)
+					actualCode := Run(strings.Fields(cmd), stdout, stderr)
 					// for commands that should exit non-zero, only check exit status of last command
 					if actualCode != expectedCode && (expectedCode == 0 || (expectedCode != 0 && index == len(commands))) {
 						t.Fatalf("%s exited with code %d, expected code %d\nSTDERR:\n%s\nSTDOUT:\n%s\n", cmd, actualCode, expectedCode, stderr, stdout)
