@@ -2,6 +2,7 @@ package archive_test
 
 import (
 	"context"
+	"errors"
 	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/file"
@@ -46,6 +47,32 @@ func TestPut(t *testing.T) {
 	fromActual := meta.Get(file.MetaKeyImportFrom).(string)
 	if fromExpected != fromActual {
 		t.Fatalf("expected source to be %s, got %s", fromExpected, fromActual)
+	}
+}
+
+func TestPutWontOverwrite(t *testing.T) {
+	ctx := context.Background()
+	testStore := NewMemStore([]*file.File{})
+	expectedMetaValue := "key"
+	f, err := file.NewSha256("test", filebuffer.New([]byte("test")), time.Now())
+	f.Meta.Set("test", expectedMetaValue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.Stat(ctx, f.Name); err == nil {
+		t.Fatal("store should not have datafile yet")
+	}
+	if _, err := testStore.Stat(ctx, file.MetaNameFrom(f.Name)); err == nil {
+		t.Fatal("store should not have metafile yet")
+	}
+	if err := archive.Put(ctx, testStore, f, ""); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := testStore.Stat(ctx, f.Name); err != nil {
+		t.Fatal("expected to find datafile after put")
+	}
+	if err := archive.Put(ctx, testStore, f, ""); !errors.Is(err, os.ErrExist) {
+		t.Fatal("expected os.ErrExist error on putting same file more than once")
 	}
 }
 

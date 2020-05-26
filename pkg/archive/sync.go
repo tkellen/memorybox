@@ -39,16 +39,16 @@ func Sync(ctx context.Context, logger *Logger, source Store, dest Store, mode st
 			}
 			src := src
 			eg.Go(func() error {
-				file, err := source.Get(egCtx, src.Name)
+				f, err := source.Get(egCtx, src.Name)
 				if err != nil {
 					return err
 				}
 				defer func() {
 					logger.Verbose.Printf("%s (synced)\n", src.Name)
-					file.Close()
+					f.Close()
 					sem.Release(1)
 				}()
-				return dest.Put(egCtx, file, file.Name, file.LastModified)
+				return dest.Put(egCtx, f, f.Name, f.LastModified)
 			})
 		}
 		return nil

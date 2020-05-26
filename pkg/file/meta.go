@@ -17,7 +17,7 @@ const MetaFileMaxSize = 256 * 1024
 
 // MetaFilePrefix controls naming for metadata files (which are named the
 // same as the file they describe plus this prefix).
-const MetaFilePrefix = "memorybox-meta-"
+const MetaFilePrefix = "meta-"
 
 // MetaKey is the key in metadata json files under which memorybox controls the
 // content automatically.

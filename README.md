@@ -88,17 +88,17 @@ sibling to every imported "datafile".
 /home/tkellen/memorybox/b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
 /home/tkellen/memorybox/c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256
 /home/tkellen/memorybox/d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
-/home/tkellen/memorybox/memorybox-meta-160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
-/home/tkellen/memorybox/memorybox-meta-2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256
-/home/tkellen/memorybox/memorybox-meta-400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256
-/home/tkellen/memorybox/memorybox-meta-43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256
-/home/tkellen/memorybox/memorybox-meta-635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256
-/home/tkellen/memorybox/memorybox-meta-661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256
-/home/tkellen/memorybox/memorybox-meta-9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256
-/home/tkellen/memorybox/memorybox-meta-b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256
-/home/tkellen/memorybox/memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
-/home/tkellen/memorybox/memorybox-meta-c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256
-/home/tkellen/memorybox/memorybox-meta-d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
+/home/tkellen/memorybox/meta-160b7f0b12cdee794db30427ecceb8429e5d8fb2c2aff7f12ccacdf1fadc357b-sha256
+/home/tkellen/memorybox/meta-2bcd21b5919ef74a1a8b9d5167b8488f5f8707abbaaa81fc20b17174ddb1363e-sha256
+/home/tkellen/memorybox/meta-400a82aed037a8ccedc6835b0d238c4ba509540021f557ddd42434766933f1d7-sha256
+/home/tkellen/memorybox/meta-43781812980cce2da36c42a002ca09a37de0c49865a339631f11a211fba059b9-sha256
+/home/tkellen/memorybox/meta-635bac5142e7de86a2943fcbec9e57f022d82b6e298de394fde49a65b8a33eec-sha256
+/home/tkellen/memorybox/meta-661a7dcf47c087403ca5981b58f48b7713cdf1dc49fe2036cb62fc1902e8ba9a-sha256
+/home/tkellen/memorybox/meta-9ef1e9090b4a34d427c24a2a75a50148a8dc1bcef683c674704ac7cf1d771585-sha256
+/home/tkellen/memorybox/meta-b217de9d6cd699575ea4981761d21c9d107424d11e058cac784ad90d63e5cbe7-sha256
+/home/tkellen/memorybox/meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+/home/tkellen/memorybox/meta-c8d306a8ea5931f442ea55fad82f4b7833f558f8e0fad6d10acc32c1023e539a-sha256
+/home/tkellen/memorybox/meta-d0e5c438e90c4abaf8edf9d1d1278c2e099ba20e3770ca29741a173f9ebe6287-sha256
 ```
 
 Initially, metafiles hold minimal data about your imported files. It is expected
@@ -178,14 +178,14 @@ It is possible to check for missing metafiles:
 ```sh
 ➜ printf "hello world" | memorybox put -
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:47:58Z","from":"devbox"},"source":"stdin"}}
-➜ rm ~/memorybox/memorybox-meta-b94d27*
+➜ rm ~/memorybox/meta-b94d27*
 ➜ memorybox check pairing
 TYPE        COUNT   SIGNATURE    SOURCE
 all         21      d4c0e5ce33   file names
 datafiles   11      9bc268d709   file names
 metafiles   10      cbe3d51625   file names
 unpaired    1       4544b50389   file names
-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
 ```
 
 It is possible to check for missing datafiles:
@@ -199,14 +199,14 @@ all         21      b4e8e1a7e6   file names
 datafiles   10      e9070ec758   file names
 metafiles   11      62b4008a61   file names
 unpaired    1       5c97d1b327   file names
-memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
+meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256 missing b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256
 ```
 
 It is possible to check for corrupted metafiles.
 ```sh
 ➜ printf "hello world" | memorybox put -
 {"memorybox":{"file":"b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256","import":{"at":"2020-05-23T23:50:40Z","from":"devbox"},"source":"stdin"}}
-➜ printf "junk[" > ~/memorybox/memorybox-meta-b94d27*
+➜ printf "junk[" > ~/memorybox/meta-b94d27*
 ➜ memorybox check metafiles
 TYPE        COUNT   SIGNATURE    SOURCE
 all         22      58e6b5c206   file names
@@ -214,7 +214,7 @@ datafiles   11      9bc268d709   file names
 metafiles   11      62b4008a61   file names
 unpaired    0       e3b0c44298   file names
 metafiles   11      f724c99150   file content
-memorybox-meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256: not json encoded
+meta-b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9-sha256: not json encoded
 ```
 
 It is possible to check for corrupted data files:

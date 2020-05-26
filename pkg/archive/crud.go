@@ -3,6 +3,7 @@ package archive
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/tkellen/memorybox/pkg/file"
 	"golang.org/x/sync/errgroup"
@@ -32,11 +33,29 @@ func Put(ctx context.Context, store Store, f *file.File, from string) error {
 	}
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		return store.Put(egCtx, f.Body, f.Name, f.LastModified)
+		exist, err := store.Stat(egCtx, f.Name)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				return store.Put(egCtx, f.Body, f.Name, f.LastModified)
+			}
+			return err
+		}
+		if !exist.CurrentWith(f) {
+			return store.Put(egCtx, f.Body, f.Name, f.LastModified)
+		}
+		return nil
 	})
 	eg.Go(func() error {
-		f.Meta.Set(file.MetaKeyImportFrom, from)
-		return store.Put(egCtx, bytes.NewReader(*f.Meta), file.MetaNameFrom(f.Name), time.Now())
+		name := file.MetaNameFrom(f.Name)
+		meta, err := GetMetaByPrefix(egCtx, store, name)
+		// Persist metafile if one doesn't exist.
+		if errors.Is(err, os.ErrNotExist) {
+			f.Meta.Set(file.MetaKeyImportFrom, from)
+			return store.Put(egCtx, bytes.NewReader(*f.Meta), name, time.Now())
+		}
+		// Otherwise return the existing metadata as an error wrapped with the
+		// fact that it already existed.
+		return fmt.Errorf("%w: %s", os.ErrExist, meta.Meta.String())
 	})
 	return eg.Wait()
 }

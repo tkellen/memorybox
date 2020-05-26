@@ -10,11 +10,6 @@ import (
 	"time"
 )
 
-type readSeekCloser interface {
-	io.ReadSeeker
-	io.Closer
-}
-
 type HashFn func(io.Reader) (string, int64, error)
 
 // File is an OS and storage system agnostic representation of a file.
@@ -37,13 +32,13 @@ func NewStub(name string, size int64, lastModified time.Time) *File {
 	}
 }
 
-func NewSha256(source string, body readSeekCloser, lastModified time.Time) (*File, error) {
+func NewSha256(source string, body io.ReadSeeker, lastModified time.Time) (*File, error) {
 	return New(source, body, lastModified, Sha256)
 }
 
 // New creates a new instance of a file and names it by hashing the content of
 // the supplied reader.
-func New(source string, body readSeekCloser, lastModified time.Time, hash HashFn) (*File, error) {
+func New(source string, body io.ReadSeeker, lastModified time.Time, hash HashFn) (*File, error) {
 	digest, size, hashErr := hash(body)
 	if hashErr != nil {
 		return nil, hashErr

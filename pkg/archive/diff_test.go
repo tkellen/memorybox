@@ -23,7 +23,7 @@ func TestDiff(t *testing.T) {
 		"diff between stores": {
 			source:      localdiskstore.New("../../testdata/valid"),
 			dest:        localdiskstore.New("../../testdata/valid-alternate"),
-			expectedErr: errors.New("[localDisk: ../../testdata/valid-alternate]: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256 [missing in localDisk: ../../testdata/valid]\n[localDisk: ../../testdata/valid-alternate]: memorybox-meta-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256 [missing in localDisk: ../../testdata/valid]"),
+			expectedErr: errors.New("[localDisk: ../../testdata/valid-alternate]: 9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256 [missing in localDisk: ../../testdata/valid]\n[localDisk: ../../testdata/valid-alternate]: meta-9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08-sha256 [missing in localDisk: ../../testdata/valid]"),
 		},
 	}
 	for name, test := range table {
