@@ -27,18 +27,18 @@ const MetaKey = "memorybox"
 // datafile that a metafile describes.
 const MetaKeyFileName = MetaKey + ".file"
 
-// MetaKeySource refers to the location where memorybox stores a string value
-// that represents the original source a user supplied when putting a datafile
-// into the store.
-const MetaKeySource = MetaKey + ".source"
-
 // MetaKeyImport refers to the location where memorybox stores details about
 // when a file was imported.
 const MetaKeyImport = MetaKey + ".import"
 
-// MetaKeyImportFrom refers to the location where memorybox stores details about
+// MetaKeyImportSource refers to the location where memorybox stores a string value
+// that represents the original source a user supplied when putting a datafile
+// into the store.
+const MetaKeyImportSource = MetaKeyImport + ".source"
+
+// MetaKeyImportSet refers to the location where memorybox stores details about
 // what grouping of files a given file was imported with.
-const MetaKeyImportFrom = MetaKeyImport + ".from"
+const MetaKeyImportSet = MetaKeyImport + ".set"
 
 // Meta holds JSON encoded metadata.
 type Meta []byte
@@ -46,10 +46,10 @@ type Meta []byte
 // NewMetaFromFile produces memorybox formatted metadata from a supplied file.
 func NewMetaFromFile(file *File) *Meta {
 	data, _ := sjson.SetBytes([]byte{}, "memorybox", map[string]interface{}{
-		"source": file.Source,
-		"file":   file.Name,
+		"file": file.Name,
 		"import": map[string]interface{}{
-			"at": time.Now().UTC().Format(time.RFC3339),
+			"at":     time.Now().UTC().Format(time.RFC3339),
+			"source": file.Source,
 		},
 	})
 	meta := Meta(data)
@@ -98,7 +98,7 @@ func (m Meta) DataFileName() string {
 
 // Source extracts the original source of the datafile this metadata describes.
 func (m Meta) Source() string {
-	return gjson.GetBytes(m, MetaKeySource).String()
+	return gjson.GetBytes(m, MetaKeyImportSource).String()
 }
 
 // Get retrieves a value from the json-encoded byte array.

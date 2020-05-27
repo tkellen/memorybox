@@ -3,6 +3,7 @@ package archive
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"github.com/tkellen/memorybox/internal/fetch"
 	"github.com/tkellen/memorybox/pkg/file"
@@ -25,8 +26,8 @@ type importEntry struct {
 // ```
 // Import will intelligently de-dupe manifests. It will also remove entries that
 // already appear in the store (by checking every import line against every
-// metafile `memorybox.source` key in the store).
-func Import(ctx context.Context, logger *Logger, store Store, concurrency int, from string, data io.Reader) error {
+// metafile `memorybox.import.source` key in the store).
+func Import(ctx context.Context, logger *Logger, store Store, concurrency int, set string, data io.Reader) error {
 	// Get full file listing from the store.
 	files, searchErr := store.Search(ctx, "")
 	if searchErr != nil {
@@ -85,6 +86,11 @@ func Import(ctx context.Context, logger *Logger, store Store, concurrency int, f
 	return fetch.Do(ctx, requests, concurrency, func(innerCtx context.Context, idx int, f *file.File) error {
 		f.Meta.Merge(metadata[idx])
 		logger.Stdout.Printf("%s", f.Meta)
-		return Put(innerCtx, store, f, from)
+		// Ignore errors about existing files, this may happen when imports are
+		// run multiple times.
+		if err := Put(innerCtx, store, f, set); !errors.Is(err, os.ErrExist) {
+			return err
+		}
+		return nil
 	})
 }

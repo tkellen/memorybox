@@ -150,7 +150,7 @@ func checkMeta(f *file.File) (signature string, detail string, err error) {
 	}
 	digest := hash.Sum256(meta)
 	if file.DataNameFrom(f.Name) != file.Meta(meta).DataFileName() {
-		detail = fmt.Sprintf("%s: %s key conflicts with filename", f.Name, file.MetaKeySource)
+		detail = fmt.Sprintf("%s: %s key conflicts with filename", f.Name, file.MetaKeyImportSource)
 	}
 	if err := file.ValidateMeta(meta); err != nil {
 		detail = fmt.Sprintf("%s: %s", f.Name, err)

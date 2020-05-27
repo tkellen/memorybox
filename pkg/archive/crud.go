@@ -25,10 +25,10 @@ func GetMetaByPrefix(ctx context.Context, store Store, prefix string) (*file.Fil
 }
 
 // Put persists a datafile/metafile pair for any backing store.
-func Put(ctx context.Context, store Store, f *file.File, from string) error {
-	if from == "" {
-		if from, _ = os.Hostname(); from == "" {
-			from = "unknown"
+func Put(ctx context.Context, store Store, f *file.File, set string) error {
+	if set == "" {
+		if set, _ = os.Hostname(); set == "" {
+			set = "unknown"
 		}
 	}
 	eg, egCtx := errgroup.WithContext(ctx)
@@ -50,7 +50,7 @@ func Put(ctx context.Context, store Store, f *file.File, from string) error {
 		meta, err := GetMetaByPrefix(egCtx, store, name)
 		// Persist metafile if one doesn't exist.
 		if errors.Is(err, os.ErrNotExist) {
-			f.Meta.Set(file.MetaKeyImportFrom, from)
+			f.Meta.Set(file.MetaKeyImportSet, set)
 			return store.Put(egCtx, bytes.NewReader(*f.Meta), name, time.Now())
 		}
 		// Otherwise return the existing metadata as an error wrapped with the

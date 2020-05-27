@@ -44,7 +44,7 @@ func TestPut(t *testing.T) {
 		t.Fatal(readErr)
 	}
 	meta := file.Meta(metaBytes)
-	fromActual := meta.Get(file.MetaKeyImportFrom).(string)
+	fromActual := meta.Get(file.MetaKeyImportSet).(string)
 	if fromExpected != fromActual {
 		t.Fatalf("expected source to be %s, got %s", fromExpected, fromActual)
 	}
