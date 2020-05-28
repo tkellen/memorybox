@@ -62,7 +62,7 @@ func TestIsMetaFileName(t *testing.T) {
 }
 
 func TestValidateMeta(t *testing.T) {
-	largeJsonContent := []byte(fmt.Sprintf(`{"memorybox":{"name":"test"},"data":"%s"}`, make([]byte, file.MetaFileMaxSize, file.MetaFileMaxSize)))
+	largeJsonContent := []byte(fmt.Sprintf(`{"%s":{"name":"test"},"data":"%s"}`, file.MetaKey, make([]byte, file.MetaFileMaxSize, file.MetaFileMaxSize)))
 	table := map[string]struct {
 		input       []byte
 		expectedErr bool
@@ -75,8 +75,8 @@ func TestValidateMeta(t *testing.T) {
 			input:       []byte(`{}`),
 			expectedErr: true,
 		},
-		"valid json with a metadata key is metadata": {
-			input:       []byte(`{"memorybox":{}}`),
+		fmt.Sprintf("valid json with a %s key is metadata", file.MetaMemoryboxKey): {
+			input:       []byte(fmt.Sprintf(`{"meta":{"memorybox":true}}`)),
 			expectedErr: false,
 		},
 		"files larger than file.MetaFileMaxSize are not valid metadata": {
@@ -217,13 +217,13 @@ func TestMeta_Merge(t *testing.T) {
 				"keyBar": "baz",
 			},
 		},
-		"memorybox key is ignored": {
-			input:       `{"memorybox":{},"keyOne":"foo","keyBar":"baz"}`,
+		"meta key is ignored": {
+			input:       `{"meta":{},"keyOne":"foo","keyBar":"baz"}`,
 			expectedErr: false,
 			checks: map[string]interface{}{
-				"memorybox": json.RawMessage("{\"file\":\"test-identity\"}"),
-				"keyOne":    "foo",
-				"keyBar":    "baz",
+				"meta":   json.RawMessage("{\"file\":\"test-identity\"}"),
+				"keyOne": "foo",
+				"keyBar": "baz",
 			},
 		},
 		"invalid json errors": {
@@ -234,7 +234,7 @@ func TestMeta_Merge(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			meta := file.Meta(`{"memorybox":{"file":"test-identity"}}`)
+			meta := file.Meta(`{"meta":{"file":"test-identity"}}`)
 			err := meta.Merge(test.input)
 			if err != nil && !test.expectedErr {
 				t.Fatalf("expected no error, saw %s", err)

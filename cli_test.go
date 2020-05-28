@@ -50,8 +50,8 @@ func testSetup(t *testing.T) testFiles {
 		storePath:           storePath,
 		configPath:          configFile,
 		configFileHash:      hash,
-		goodIndexUpdateFile: tempFile(t, fmt.Sprintf("{\"memorybox\":{\"file\":\"%[1]s\"}}\n{\"memorybox\":{\"file\":\"%[1]s\"}}\n", hash)),
-		badIndexUpdateFile:  tempFile(t, fmt.Sprintf("{\"memorybox\":{\"file\":\"%[1]s\"}}\n{\"memorybox\":{\"file\":\"missing\"}\n{\"memorybox\":{}}\n", hash)),
+		goodIndexUpdateFile: tempFile(t, fmt.Sprintf("{\"meta\":{\"file\":\"%[1]s\",\"memorybox\":true}}\n{\"meta\":{\"file\":\"%[1]s\",\"memorybox\":true}}\n", hash)),
+		badIndexUpdateFile:  tempFile(t, fmt.Sprintf("{\"meta\":{\"file\":\"%[1]s\",\"memorybox\":true}}\n{\"meta\":{\"file\":\"missing\",\"memorybox\":true}\n{\"meta\":{\"memorybox\":true}}\n", hash)),
 	}
 }
 

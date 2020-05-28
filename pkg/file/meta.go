@@ -21,7 +21,11 @@ const MetaFilePrefix = "meta-"
 
 // MetaKey is the key in metadata json files under which memorybox controls the
 // content automatically.
-const MetaKey = "memorybox"
+const MetaKey = "meta"
+
+// MetaMemoryboxKey is the key under meta that is set to true to indicate the
+// metadata belongs to memorybox.
+const MetaMemoryboxKey = MetaKey + ".memorybox"
 
 // MetaKeyFileName refers to the location where memorybox stores the name of the
 // datafile that a metafile describes.
@@ -45,8 +49,9 @@ type Meta []byte
 
 // NewMetaFromFile produces memorybox formatted metadata from a supplied file.
 func NewMetaFromFile(file *File) *Meta {
-	data, _ := sjson.SetBytes([]byte{}, "memorybox", map[string]interface{}{
-		"file": file.Name,
+	data, _ := sjson.SetBytes([]byte{}, MetaKey, map[string]interface{}{
+		"memorybox": true,
+		"file":      file.Name,
 		"import": map[string]interface{}{
 			"at":     time.Now().UTC().Format(time.RFC3339),
 			"source": file.Source,
