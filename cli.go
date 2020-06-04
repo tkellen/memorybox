@@ -159,7 +159,6 @@ func (ctx *ctx) command() *cli.Tree {
 			"check": cli.Tree{
 				Fn: cli.Fn{Fn: ctx.check, MinArgs: 1, Help: ctx.help},
 			},
-
 			"meta": cli.Tree{
 				Fn: cli.Fn{Fn: ctx.metaGet, MinArgs: 1, Help: ctx.help},
 				SubCommands: cli.Map{
@@ -223,7 +222,7 @@ func (ctx *ctx) help(_ []string) error {
 }
 
 func (ctx *ctx) hash(args []string) error {
-	return fetch.Do(ctx.background, args, ctx.flag.Max, func(innerCtx context.Context, _ int, file *file.File) error {
+	return fetch.Do(ctx.background, args, ctx.flag.Max, false, func(innerCtx context.Context, _ int, file *file.File) error {
 		ctx.logger.Stdout.Println(file.Name)
 		return nil
 	})
@@ -242,7 +241,7 @@ func (ctx *ctx) get(args []string) error {
 
 func (ctx *ctx) put(args []string) error {
 	return ctx.withStore(ctx.flag.Target, func(store archive.Store) error {
-		return fetch.Do(ctx.background, args, ctx.flag.Max, func(innerCtx context.Context, index int, file *file.File) error {
+		return fetch.Do(ctx.background, args, ctx.flag.Max, true, func(innerCtx context.Context, index int, file *file.File) error {
 			if err := archive.Put(innerCtx, store, file, ""); err != nil {
 				return err
 			}
@@ -261,7 +260,7 @@ func (ctx *ctx) delete(args []string) error {
 func (ctx *ctx) importFn(args []string) error {
 	name, importFile := args[0], args[1]
 	return ctx.withStore(ctx.flag.Target, func(store archive.Store) error {
-		return fetch.Do(ctx.background, []string{importFile}, ctx.flag.Max, func(innerCtx context.Context, _ int, f *file.File) error {
+		return fetch.Do(ctx.background, []string{importFile}, ctx.flag.Max, false, func(innerCtx context.Context, _ int, f *file.File) error {
 			return archive.Import(innerCtx, ctx.logger, store, ctx.flag.Max, name, f)
 		})
 	})

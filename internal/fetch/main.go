@@ -26,15 +26,20 @@ func Do(
 	ctx context.Context,
 	requests []string,
 	concurrency int,
+	traverseDirectories bool,
 	process func(context.Context, int, *file.File) error,
 ) error {
 	// Ensure any requests which are directories are fully traversed and
-	// converted to full file listings.
-	expandedRequests := new(ctx).expand(requests)
+	// converted to full file listings. This must not be used during import
+	// operations as each import line is expected to map to exactly one file
+	// and violating this can break how import metadata is mapped.
+	if traverseDirectories {
+		requests = new(ctx).expand(requests)
+	}
 	sem := semaphore.NewWeighted(int64(concurrency))
 	eg, egCtx := errgroup.WithContext(ctx)
 	eg.Go(func() error {
-		for index, item := range expandedRequests {
+		for index, item := range requests {
 			index, item := index, item // https://golang.org/doc/faq#closures_and_goroutines
 			if err := sem.Acquire(egCtx, 1); err != nil {
 				return err

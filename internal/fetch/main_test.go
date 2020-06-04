@@ -63,7 +63,7 @@ func TestFetch(t *testing.T) {
 	for name, test := range table {
 		test := test
 		t.Run(name, func(t *testing.T) {
-			err := fetch.Do(context.Background(), []string{test.input, test.input, test.input, test.input}, 2, func(innerCtx context.Context, index int, src *file.File) error {
+			err := fetch.Do(context.Background(), []string{test.input, test.input, test.input, test.input}, 2, false, func(innerCtx context.Context, index int, src *file.File) error {
 				actualBytes, readErr := ioutil.ReadAll(src.Body)
 				if readErr != nil {
 					t.Fatal(readErr)

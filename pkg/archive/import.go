@@ -83,7 +83,7 @@ func Import(ctx context.Context, logger *Logger, store Store, concurrency int, s
 		metadata = append(metadata, line[1])
 	}
 	logger.Stderr.Printf("queued: %d, duplicates removed: %d, existing removed: %d", len(requests), dupeImportCount, inStoreAlreadyCount)
-	return fetch.Do(ctx, requests, concurrency, func(innerCtx context.Context, idx int, f *file.File) error {
+	return fetch.Do(ctx, requests, concurrency, false, func(innerCtx context.Context, idx int, f *file.File) error {
 		f.Meta.Merge(metadata[idx])
 		logger.Stdout.Printf("%s", f.Meta)
 		// Ignore errors about existing files, this may happen when imports are
