@@ -24,8 +24,9 @@ func GetMetaByPrefix(ctx context.Context, store Store, prefix string) (*file.Fil
 	return findAndGet(ctx, store, prefix, true)
 }
 
-// Put persists a datafile/metafile pair for any backing store.
-func Put(ctx context.Context, store Store, f *file.File, set string) error {
+// Put persists a datafile/metafile pair for any backing store and returns the
+// meta information about the file.
+func Put(ctx context.Context, store Store, f *file.File, set string) (*file.File, error) {
 	if set == "" {
 		if set, _ = os.Hostname(); set == "" {
 			set = "unknown"
@@ -53,11 +54,20 @@ func Put(ctx context.Context, store Store, f *file.File, set string) error {
 			f.Meta.Set(file.MetaKeyImportSet, set)
 			return store.Put(egCtx, bytes.NewReader(*f.Meta), name, time.Now())
 		}
-		// Otherwise return the existing metadata as an error wrapped with the
-		// fact that it already existed.
-		return fmt.Errorf("%w: %s", os.ErrExist, meta.Meta.String())
+		// If there was no error, the meta file existed already. If a consumer
+		// tries to store the same file twice, there is no error. This clause
+		// ensures the metadata that is output to the screen reflects what is
+		// already in the store.
+		if err == nil {
+			f = meta
+		}
+		// Return an error if there was one.
+		return err
 	})
-	return eg.Wait()
+	if err := eg.Wait(); err != nil {
+		return nil, err
+	}
+	return f, nil
 }
 
 // Delete removes a datafile/metafile pair for any backing store.

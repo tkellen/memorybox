@@ -242,10 +242,11 @@ func (ctx *ctx) get(args []string) error {
 func (ctx *ctx) put(args []string) error {
 	return ctx.withStore(ctx.flag.Target, func(store archive.Store) error {
 		return fetch.Do(ctx.background, args, ctx.flag.Max, true, func(innerCtx context.Context, index int, file *file.File) error {
-			if err := archive.Put(innerCtx, store, file, ""); err != nil {
+			fileInStore, err := archive.Put(innerCtx, store, file, "")
+			if err != nil {
 				return err
 			}
-			ctx.logger.Stdout.Print(file.Meta)
+			ctx.logger.Stdout.Print(fileInStore.Meta)
 			return nil
 		})
 	})

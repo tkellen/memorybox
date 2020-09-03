@@ -28,7 +28,7 @@ func TestPut(t *testing.T) {
 	if _, err := testStore.Stat(ctx, file.MetaNameFrom(f.Name)); err == nil {
 		t.Fatal("store should not have metafile yet")
 	}
-	if err := archive.Put(ctx, testStore, f, ""); err != nil {
+	if _, err := archive.Put(ctx, testStore, f, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testStore.Stat(ctx, f.Name); err != nil {
@@ -64,14 +64,11 @@ func TestPutWontOverwrite(t *testing.T) {
 	if _, err := testStore.Stat(ctx, file.MetaNameFrom(f.Name)); err == nil {
 		t.Fatal("store should not have metafile yet")
 	}
-	if err := archive.Put(ctx, testStore, f, ""); err != nil {
+	if _, err := archive.Put(ctx, testStore, f, ""); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := testStore.Stat(ctx, f.Name); err != nil {
 		t.Fatal("expected to find datafile after put")
-	}
-	if err := archive.Put(ctx, testStore, f, ""); !errors.Is(err, os.ErrExist) {
-		t.Fatal("expected os.ErrExist error on putting same file more than once")
 	}
 }
 

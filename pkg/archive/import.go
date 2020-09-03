@@ -3,7 +3,6 @@ package archive
 import (
 	"bufio"
 	"context"
-	"errors"
 	"fmt"
 	"github.com/tkellen/memorybox/internal/fetch"
 	"github.com/tkellen/memorybox/pkg/file"
@@ -85,12 +84,13 @@ func Import(ctx context.Context, logger *Logger, store Store, concurrency int, s
 	logger.Stderr.Printf("queued: %d, duplicates removed: %d, existing removed: %d", len(requests), dupeImportCount, inStoreAlreadyCount)
 	return fetch.Do(ctx, requests, concurrency, false, func(innerCtx context.Context, idx int, f *file.File) error {
 		f.Meta.Merge(metadata[idx])
-		logger.Stdout.Printf("%s", f.Meta)
 		// Ignore errors about existing files, this may happen when imports are
 		// run multiple times.
-		if err := Put(innerCtx, store, f, set); !errors.Is(err, os.ErrExist) {
+		fileInStore, err := Put(innerCtx, store, f, set)
+		if err != nil {
 			return err
 		}
+		logger.Stdout.Printf("%s", fileInStore.Meta)
 		return nil
 	})
 }
