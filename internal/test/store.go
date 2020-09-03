@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/file"
 	"io/ioutil"
@@ -27,7 +28,7 @@ func StoreSuite(t *testing.T, store archive.Store) {
 
 func storePutStatGetDelete(t *testing.T, store archive.Store) {
 	ctx := context.Background()
-	name := string(time.Now().UnixNano())
+	name := fmt.Sprint(time.Now().UnixNano())
 	input := []byte("test")
 	stamp := time.Now().Add(-(24 * time.Hour))
 	// Test get failing on missing file.

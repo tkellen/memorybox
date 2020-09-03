@@ -90,9 +90,8 @@ func (f *File) CurrentWith(other *File) bool {
 		diff := f.LastModified.Sub(other.LastModified)
 		otherIsSameOrOlder := (time.Duration(0) * time.Second) <= diff
 		return f.Size == other.Size && otherIsSameOrOlder
-	} else {
-		return f.Size == other.Size
 	}
+	return f.Size == other.Size
 }
 
 // Sha256 computes a sha256 message digest for a provided io.Reader.

@@ -268,14 +268,14 @@ func (ctx *ctx) importFn(args []string) error {
 
 func (ctx *ctx) index(_ []string) error {
 	return ctx.withStore(ctx.flag.Target, func(store archive.Store) error {
-		if index, err := archive.Index(ctx.background, store, ctx.flag.Max); err != nil {
+		index, err := archive.Index(ctx.background, store, ctx.flag.Max)
+		if err != nil {
 			return err
-		} else {
-			for _, line := range index {
-				ctx.logger.Stdout.Printf("%s", bytes.TrimRight(line, "\n"))
-			}
-			return nil
 		}
+		for _, line := range index {
+			ctx.logger.Stdout.Printf("%s", bytes.TrimRight(line, "\n"))
+		}
+		return nil
 	})
 }
 
@@ -300,12 +300,12 @@ func (ctx *ctx) indexUpdate(args []string) error {
 
 func (ctx *ctx) check(args []string) error {
 	return ctx.withStore(ctx.flag.Target, func(store archive.Store) error {
-		if result, err := archive.Check(ctx.background, store, ctx.flag.Max, args[0]); err == nil {
+		result, err := archive.Check(ctx.background, store, ctx.flag.Max, args[0])
+		if err == nil {
 			ctx.logger.Stdout.Printf("%s", result)
 			return nil
-		} else {
-			return err
 		}
+		return err
 	})
 }
 

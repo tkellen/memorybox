@@ -2,7 +2,6 @@ package archive_test
 
 import (
 	"context"
-	"errors"
 	"github.com/mattetti/filebuffer"
 	"github.com/tkellen/memorybox/pkg/archive"
 	"github.com/tkellen/memorybox/pkg/file"

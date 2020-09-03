@@ -14,11 +14,11 @@ func Diff(ctx context.Context, source Store, dest Store) error {
 	var diffs []string
 	index := map[Store]map[string]*file.File{}
 	for _, store := range []Store{source, dest} {
-		if files, err := store.Search(ctx, ""); err != nil {
+		files, err := store.Search(ctx, "")
+		if err != nil {
 			return err
-		} else {
-			index[store] = files.ByName()
 		}
+		index[store] = files.ByName()
 	}
 	compares := []error{
 		compare(index, source, dest),

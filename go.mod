@@ -14,6 +14,8 @@ require (
 	github.com/tidwall/gjson v1.6.0
 	github.com/tidwall/sjson v1.1.1
 	github.com/tkellen/cli v0.0.0-20200507192129-289b368cfd44
-	golang.org/x/sync v0.0.0-20200317015054-43a5402ce75a
+	golang.org/x/lint v0.0.0-20200302205851-738671d3881b // indirect
+	golang.org/x/sync v0.0.0-20200625203802-6e8e738ad208
+	golang.org/x/tools v0.0.0-20200903005429-2364a5e8fdcf // indirect
 	gopkg.in/yaml.v2 v2.2.8
 )
