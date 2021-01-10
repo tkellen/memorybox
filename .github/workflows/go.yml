@@ -15,16 +15,14 @@ jobs:
     name: build and test
     steps:
     - uses: actions/checkout@v2
-    - uses: actions/setup-go@v2-beta
+    - uses: actions/setup-go@v2
       with:
-        go-version: '^1.14.0'
+        go-version: 1.15
     - run: go mod download
     - name: build and test
       run: |
         go build -v .
-        go test -v $(go list ./... | grep -v hack | grep -v test) -coverprofile=profile.cov
-      env:
-        CGO_ENABLED: 0
+        CGO_ENABLED=0 go test -v $(go list ./... | grep -v hack | grep -v test) -coverprofile=profile.cov
     - name: push code coverage to coveralls.io
       if: matrix.os == 'ubuntu-latest'
       uses: shogo82148/actions-goveralls@v1.2.2
