@@ -3,6 +3,12 @@ package objectstore
 import (
 	"context"
 	"fmt"
+	"io"
+	"io/ioutil"
+	"os"
+	"sort"
+	"time"
+
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials"
 	"github.com/aws/aws-sdk-go/aws/request"
@@ -12,10 +18,6 @@ import (
 	"github.com/tkellen/memorybox/pkg/file"
 	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
-	"io"
-	"io/ioutil"
-	"sort"
-	"time"
 )
 
 // Store implements archive.Store backed by s3-compatible object archive.
@@ -203,7 +205,8 @@ func (s *Store) Stat(ctx context.Context, name string) (*file.File, error) {
 		Key:    aws.String(name),
 	})
 	if err != nil {
-		return nil, err
+		// TODO: recognize network failure here vs file not existing.
+		return nil, fmt.Errorf("%w: %s", os.ErrNotExist, err)
 	}
 	// TODO: find a way to get metadata for many objects fast.
 	return file.NewStub(name, *stat.ContentLength, *stat.LastModified), nil
